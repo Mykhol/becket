@@ -1,0 +1,554 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Becket: Cross-repo worktree CLI ──────────────────────────────────────────
+
+VERSION="0.1.0"
+
+# ── Colors ───────────────────────────────────────────────────────────────────
+
+if [[ -t 1 ]]; then
+  RED=$'\033[0;31m'    GREEN=$'\033[0;32m'  YELLOW=$'\033[0;33m'
+  BLUE=$'\033[0;34m'   BOLD=$'\033[1m'      DIM=$'\033[2m'
+  RESET=$'\033[0m'
+else
+  RED=""  GREEN=""  YELLOW=""  BLUE=""  BOLD=""  DIM=""  RESET=""
+fi
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+die()  { echo "${RED}error:${RESET} $*" >&2; exit 1; }
+info() { echo "${GREEN}▸${RESET} $*"; }
+warn() { echo "${YELLOW}▸${RESET} $*"; }
+
+expand_path() {
+  local p="$1"
+  p="${p/#\~/$HOME}"
+  if [[ "$p" != /* ]]; then
+    p="$(cd "$(dirname "$p")" 2>/dev/null && pwd)/$(basename "$p")"
+  fi
+  echo "$p"
+}
+
+# ── Config discovery ────────────────────────────────────────────────────────
+
+find_config() {
+  # Explicit flag or env var
+  if [[ -n "${BECKET_CONFIG_PATH:-}" ]]; then
+    echo "$BECKET_CONFIG_PATH"
+    return
+  fi
+
+  # Walk up from CWD
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/.becket.json" ]]; then
+      # Platform configs have a "repos" key; workspace manifests have an "id" key
+      if python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'repos' in d and 'id' not in d else 1)" "$dir/.becket.json" 2>/dev/null; then
+        echo "$dir/.becket.json"
+        return
+      fi
+    fi
+    dir="$(dirname "$dir")"
+  done
+
+  return 1
+}
+
+load_config() {
+  local config_file
+  config_file="$(find_config)" || die "No .becket.json found. Run 'becket init' in your platform directory."
+  PLATFORM_DIR="$(dirname "$config_file")"
+  CONFIG_FILE="$config_file"
+}
+
+# JSON helpers using python3 (available on macOS + most Linux)
+json_get() {
+  python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps(d.get(sys.argv[2], '')))" "$1" "$2" | python3 -c "import json,sys; v=json.load(sys.stdin); print(v if isinstance(v,str) else json.dumps(v))"
+}
+
+json_keys() {
+  python3 -c "import json,sys; d=json.load(open(sys.argv[1])); [print(k) for k in d.get(sys.argv[2], {}).keys()]" "$1" "$2"
+}
+
+json_nested() {
+  python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+keys = sys.argv[2:]
+for k in keys:
+    d = d[k]
+print(d if isinstance(d, str) else json.dumps(d))
+" "$@"
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+cmd_init() {
+  local config_file="$PWD/.becket.json"
+  if [[ -f "$config_file" ]]; then
+    die ".becket.json already exists in this directory."
+  fi
+
+  info "Scanning for git repos in ${BOLD}$PWD${RESET}..."
+
+  local repos_json="{"
+  local first=true
+  for dir in */; do
+    dir="${dir%/}"
+    if [[ -d "$dir/.git" ]]; then
+      # Detect default branch
+      local default_branch="main"
+      if git -C "$dir" rev-parse --verify origin/master &>/dev/null && \
+         ! git -C "$dir" rev-parse --verify origin/main &>/dev/null; then
+        default_branch="master"
+      fi
+      if [[ "$first" == true ]]; then
+        first=false
+      else
+        repos_json+=","
+      fi
+      repos_json+="\"$dir\":{\"path\":\"./$dir\",\"defaultBase\":\"$default_branch\"}"
+      info "Found repo: ${BOLD}$dir${RESET} (base: $default_branch)"
+    fi
+  done
+  repos_json+="}"
+
+  if [[ "$repos_json" == "{}" ]]; then
+    die "No git repos found in current directory."
+  fi
+
+  # Prompt for workspaces directory
+  local default_ws="~/workspaces"
+  if [[ -t 0 ]]; then
+    printf "\n${BOLD}Workspaces directory${RESET} [${DIM}%s${RESET}]: " "$default_ws"
+    read -r ws_dir
+    ws_dir="${ws_dir:-$default_ws}"
+  else
+    ws_dir="$default_ws"
+  fi
+
+  python3 -c "
+import json, sys
+config = {
+    'workspacesDir': sys.argv[1],
+    'repos': json.loads(sys.argv[2]),
+    'branchPrefix': 'feature/'
+}
+with open(sys.argv[3], 'w') as f:
+    json.dump(config, f, indent=2)
+    f.write('\n')
+" "$ws_dir" "$repos_json" "$config_file"
+
+  info "Created ${BOLD}$config_file${RESET}"
+}
+
+cmd_create() {
+  local id="" desc="" base_override="" repos_flag=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --desc)     desc="$2"; shift 2 ;;
+      --base)     base_override="$2"; shift 2 ;;
+      --repos)    repos_flag="$2"; shift 2 ;;
+      -*)         die "Unknown option: $1" ;;
+      *)          id="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$id" ]] || die "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH]"
+
+  load_config
+
+  local ws_dir
+  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
+  local branch_prefix
+  branch_prefix="$(json_get "$CONFIG_FILE" branchPrefix)"
+
+  local ws_path="$ws_dir/$id"
+  [[ ! -d "$ws_path" ]] || die "Workspace '$id' already exists at $ws_path"
+
+  # Determine branch name
+  local branch_suffix="$id"
+  if [[ -n "$desc" ]]; then
+    local slug
+    slug="$(echo "$desc" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')"
+    branch_suffix="$id-$slug"
+  fi
+  local branch="${branch_prefix}${branch_suffix}"
+
+  # Determine which repos to include
+  local all_repos=()
+  while IFS= read -r r; do
+    all_repos+=("$r")
+  done < <(json_keys "$CONFIG_FILE" repos)
+
+  local selected_repos=()
+  if [[ -n "$repos_flag" ]]; then
+    IFS=',' read -ra selected_repos <<< "$repos_flag"
+  elif [[ -t 0 ]]; then
+    echo ""
+    echo "${BOLD}Select repos to include:${RESET}"
+    for i in "${!all_repos[@]}"; do
+      echo "  $((i+1)). ${all_repos[$i]}"
+    done
+    echo "  ${DIM}Enter numbers separated by spaces, or press Enter for all${RESET}"
+    printf "> "
+    read -r selection
+    if [[ -z "$selection" ]]; then
+      selected_repos=("${all_repos[@]}")
+    else
+      for num in $selection; do
+        local idx=$((num - 1))
+        if [[ $idx -ge 0 && $idx -lt ${#all_repos[@]} ]]; then
+          selected_repos+=("${all_repos[$idx]}")
+        fi
+      done
+    fi
+  else
+    selected_repos=("${all_repos[@]}")
+  fi
+
+  [[ ${#selected_repos[@]} -gt 0 ]] || die "No repos selected."
+
+  # Validate selected repos exist in config
+  for repo in "${selected_repos[@]}"; do
+    json_nested "$CONFIG_FILE" repos "$repo" path &>/dev/null || die "Repo '$repo' not found in config."
+  done
+
+  # Create workspace
+  mkdir -p "$ws_path/docs"
+  info "Created workspace: ${BOLD}$ws_path${RESET}"
+
+  # Create worktrees
+  local manifest_repos="{"
+  local first=true
+  for repo in "${selected_repos[@]}"; do
+    local repo_rel_path
+    repo_rel_path="$(json_nested "$CONFIG_FILE" repos "$repo" path)"
+    local repo_abs_path
+    repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
+
+    local base
+    if [[ -n "$base_override" ]]; then
+      base="$base_override"
+    else
+      base="$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)"
+    fi
+
+    local wt_path="$ws_path/$repo"
+
+    info "Creating worktree: ${BOLD}$repo${RESET} → $branch (base: $base)"
+    git -C "$repo_abs_path" worktree add "$wt_path" -b "$branch" "$base"
+
+    if [[ "$first" == true ]]; then
+      first=false
+    else
+      manifest_repos+=","
+    fi
+    manifest_repos+="\"$repo\":{\"branch\":\"$branch\",\"base\":\"$base\"}"
+  done
+  manifest_repos+="}"
+
+  # Write workspace manifest
+  python3 -c "
+import json, sys
+manifest = {
+    'id': sys.argv[1],
+    'created': sys.argv[2],
+    'description': sys.argv[3],
+    'platformDir': sys.argv[4],
+    'repos': json.loads(sys.argv[5])
+}
+with open(sys.argv[6], 'w') as f:
+    json.dump(manifest, f, indent=2)
+    f.write('\n')
+" "$id" "$(date +%Y-%m-%d)" "$desc" "$PLATFORM_DIR" "$manifest_repos" "$ws_path/.becket.json"
+
+  echo ""
+  info "Workspace ${BOLD}$id${RESET} ready at ${BOLD}$ws_path${RESET}"
+  info "Branch: ${BOLD}$branch${RESET}"
+}
+
+cmd_list() {
+  load_config
+
+  local ws_dir
+  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
+
+  if [[ ! -d "$ws_dir" ]]; then
+    echo "No workspaces directory found at $ws_dir"
+    return
+  fi
+
+  local found=false
+  printf "\n${BOLD}%-20s %-40s %-12s %s${RESET}\n" "ID" "REPOS" "CREATED" "DESCRIPTION"
+  printf "%-20s %-40s %-12s %s\n" "──────────────────" "────────────────────────────────────────" "────────────" "───────────────"
+
+  for manifest in "$ws_dir"/*/.becket.json; do
+    [[ -f "$manifest" ]] || continue
+
+    # Only process workspace manifests (have "id" key)
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'id' in d else 1)" "$manifest" 2>/dev/null || continue
+
+    found=true
+    local ws_id ws_created ws_desc ws_repos
+    ws_id="$(json_get "$manifest" id)"
+    ws_created="$(json_get "$manifest" created)"
+    ws_desc="$(json_get "$manifest" description)"
+    ws_repos="$(json_keys "$manifest" repos | paste -sd',' -)"
+
+    printf "%-20s %-40s %-12s %s\n" "$ws_id" "$ws_repos" "$ws_created" "$ws_desc"
+  done
+
+  if [[ "$found" == false ]]; then
+    echo "  ${DIM}No active workspaces${RESET}"
+  fi
+  echo ""
+}
+
+cmd_status() {
+  load_config
+
+  local ws_dir
+  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
+  local target_id="${1:-}"
+
+  local manifests=()
+  if [[ -n "$target_id" ]]; then
+    local m="$ws_dir/$target_id/.becket.json"
+    [[ -f "$m" ]] || die "Workspace '$target_id' not found."
+    manifests+=("$m")
+  else
+    for m in "$ws_dir"/*/.becket.json; do
+      [[ -f "$m" ]] || continue
+      python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'id' in d else 1)" "$m" 2>/dev/null && manifests+=("$m")
+    done
+  fi
+
+  [[ ${#manifests[@]} -gt 0 ]] || die "No workspaces found."
+
+  for manifest in "${manifests[@]}"; do
+    local ws_id
+    ws_id="$(json_get "$manifest" id)"
+    local ws_path
+    ws_path="$(dirname "$manifest")"
+
+    echo ""
+    echo "${BOLD}Workspace: $ws_id${RESET}"
+    printf "  ${BOLD}%-20s %-35s %-10s %s${RESET}\n" "REPO" "BRANCH" "STATUS" "AHEAD/BEHIND"
+    printf "  %-20s %-35s %-10s %s\n" "──────────────────" "─────────────────────────────────" "────────" "────────────"
+
+    local repos=()
+    while IFS= read -r r; do
+      repos+=("$r")
+    done < <(json_keys "$manifest" repos)
+
+    for repo in "${repos[@]}"; do
+      local wt_path="$ws_path/$repo"
+      if [[ ! -d "$wt_path" ]]; then
+        printf "  %-20s ${RED}%-35s${RESET} %-10s %s\n" "$repo" "(missing)" "" ""
+        continue
+      fi
+
+      local branch_name
+      branch_name="$(git -C "$wt_path" branch --show-current 2>/dev/null || echo "detached")"
+
+      local status_text status_color
+      if git -C "$wt_path" diff --quiet 2>/dev/null && git -C "$wt_path" diff --cached --quiet 2>/dev/null; then
+        status_text="clean"
+        status_color="$GREEN"
+      else
+        status_text="dirty"
+        status_color="$YELLOW"
+      fi
+
+      local base
+      base="$(json_nested "$manifest" repos "$repo" base)"
+      local ahead behind ahead_behind=""
+      ahead="$(git -C "$wt_path" rev-list --count "$base..$branch_name" 2>/dev/null || echo "?")"
+      behind="$(git -C "$wt_path" rev-list --count "$branch_name..$base" 2>/dev/null || echo "?")"
+      ahead_behind="${GREEN}+${ahead}${RESET} / ${RED}-${behind}${RESET}"
+
+      printf "  %-20s %-35s ${status_color}%-10s${RESET} %b\n" "$repo" "$branch_name" "$status_text" "$ahead_behind"
+    done
+  done
+  echo ""
+}
+
+cmd_teardown() {
+  local id="" delete_branches=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --delete-branches) delete_branches=true; shift ;;
+      -*)                die "Unknown option: $1" ;;
+      *)                 id="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$id" ]] || die "Usage: becket teardown <id> [--delete-branches]"
+
+  load_config
+
+  local ws_dir
+  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
+  local ws_path="$ws_dir/$id"
+  local manifest="$ws_path/.becket.json"
+
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  local platform_dir
+  platform_dir="$(json_get "$manifest" platformDir)"
+
+  local repos=()
+  while IFS= read -r r; do
+    repos+=("$r")
+  done < <(json_keys "$manifest" repos)
+
+  # Remove worktrees
+  for repo in "${repos[@]}"; do
+    local repo_rel_path
+    repo_rel_path="$(json_nested "$CONFIG_FILE" repos "$repo" path 2>/dev/null)" || {
+      warn "Repo '$repo' not in platform config, skipping worktree removal."
+      continue
+    }
+    local repo_abs_path
+    repo_abs_path="$(cd "$platform_dir" && cd "$repo_rel_path" && pwd)"
+    local wt_path="$ws_path/$repo"
+
+    if [[ -d "$wt_path" ]]; then
+      info "Removing worktree: ${BOLD}$repo${RESET}"
+      git -C "$repo_abs_path" worktree remove "$wt_path" --force 2>/dev/null || warn "Could not remove worktree for $repo"
+    fi
+
+    if [[ "$delete_branches" == true ]]; then
+      local branch
+      branch="$(json_nested "$manifest" repos "$repo" branch)"
+      info "Deleting branch: ${BOLD}$branch${RESET} from $repo"
+      git -C "$repo_abs_path" branch -D "$branch" 2>/dev/null || warn "Could not delete branch $branch"
+    fi
+
+    # Safety net
+    git -C "$repo_abs_path" worktree prune 2>/dev/null || true
+  done
+
+  # Remove workspace directory
+  rm -rf "$ws_path"
+  info "Removed workspace: ${BOLD}$id${RESET}"
+}
+
+cmd_add() {
+  local id="${1:-}"
+  local repo="${2:-}"
+
+  [[ -n "$id" && -n "$repo" ]] || die "Usage: becket add <id> <repo>"
+
+  load_config
+
+  local ws_dir
+  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
+  local ws_path="$ws_dir/$id"
+  local manifest="$ws_path/.becket.json"
+
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  # Check repo isn't already in workspace
+  if json_nested "$manifest" repos "$repo" branch &>/dev/null; then
+    die "Repo '$repo' is already in workspace '$id'."
+  fi
+
+  # Check repo exists in platform config
+  json_nested "$CONFIG_FILE" repos "$repo" path &>/dev/null || die "Repo '$repo' not found in platform config."
+
+  local repo_rel_path
+  repo_rel_path="$(json_nested "$CONFIG_FILE" repos "$repo" path)"
+  local repo_abs_path
+  repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
+
+  # Determine branch name from existing workspace repos (reuse convention)
+  local existing_branch
+  existing_branch="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+repos = d['repos']
+first_repo = next(iter(repos))
+print(repos[first_repo]['branch'])
+" "$manifest")"
+
+  local base
+  base="$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)"
+
+  local wt_path="$ws_path/$repo"
+  info "Creating worktree: ${BOLD}$repo${RESET} → $existing_branch (base: $base)"
+  git -C "$repo_abs_path" worktree add "$wt_path" -b "$existing_branch" "$base"
+
+  # Update workspace manifest
+  python3 -c "
+import json, sys
+manifest_path = sys.argv[1]
+repo_name = sys.argv[2]
+branch = sys.argv[3]
+base = sys.argv[4]
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+
+manifest['repos'][repo_name] = {'branch': branch, 'base': base}
+
+with open(manifest_path, 'w') as f:
+    json.dump(manifest, f, indent=2)
+    f.write('\n')
+" "$manifest" "$repo" "$existing_branch" "$base"
+
+  info "Added ${BOLD}$repo${RESET} to workspace ${BOLD}$id${RESET}"
+}
+
+cmd_help() {
+  cat <<EOF
+${BOLD}becket${RESET} v${VERSION} — Cross-repo worktree CLI
+
+${BOLD}USAGE${RESET}
+  becket <command> [options]
+
+${BOLD}COMMANDS${RESET}
+  init                          Create .becket.json in current directory
+  create <id> [options]         Create feature workspace + worktrees
+  list                          List all active feature workspaces
+  status [id]                   Show branch status across repos
+  teardown <id> [options]       Remove worktrees + workspace
+  add <id> <repo>               Add a repo to existing workspace
+
+${BOLD}CREATE OPTIONS${RESET}
+  --desc TEXT                   Description (appended to branch name)
+  --repos r1,r2                 Repos to include (default: interactive)
+  --base BRANCH                 Override base branch for all repos
+
+${BOLD}TEARDOWN OPTIONS${RESET}
+  --delete-branches             Also delete feature branches
+
+${BOLD}ENVIRONMENT${RESET}
+  BECKET_CONFIG                 Path to .becket.json (overrides discovery)
+EOF
+}
+
+# ── Main dispatch ────────────────────────────────────────────────────────────
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+
+  case "$cmd" in
+    init)     cmd_init "$@" ;;
+    create)   cmd_create "$@" ;;
+    list)     cmd_list "$@" ;;
+    status)   cmd_status "$@" ;;
+    teardown) cmd_teardown "$@" ;;
+    add)      cmd_add "$@" ;;
+    help|--help|-h) cmd_help ;;
+    version|--version|-v) echo "becket v${VERSION}" ;;
+    *)        die "Unknown command: $cmd. Run 'becket help' for usage." ;;
+  esac
+}
+
+main "$@"
