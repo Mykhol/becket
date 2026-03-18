@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "becket-settings",
+  "title": "Becket Settings",
+  "description": "Configuration for a becket platform directory.",
+  "type": "object",
+  "required": ["repos"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "repos": {
+      "type": "object",
+      "description": "Map of repository names to their configuration.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "defaultBase"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the repository from the platform directory."
+          },
+          "defaultBase": {
+            "type": "string",
+            "description": "Default base branch (e.g. main, master)."
+          },
+          "setup": {
+            "type": "array",
+            "description": "Commands to run during first-time setup (executed in the repo worktree directory).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dev": {
+            "type": "string",
+            "description": "Command to start the dev server (sent to a tmux window by 'becket dev')."
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables to set for setup and dev commands.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "branchPrefix": {
+      "type": "string",
+      "description": "Prefix for feature branch names.",
+      "default": "feature/"
+    },
+    "files": {
+      "type": "array",
+      "description": "Files to copy into each workspace root. Paths are relative to the platform directory.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "docker": {
+      "type": "string",
+      "description": "Path to a docker-compose file, relative to the workspace root. Started by 'becket dev' and 'becket setup'."
+    },
+    "session": {
+      "type": "string",
+      "description": "Tmux session name for 'becket dev'. Defaults to the workspace ID."
+    }
+  },
+  "additionalProperties": false
+}

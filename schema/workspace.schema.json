@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "becket-workspace",
+  "title": "Becket Workspace Manifest",
+  "description": "Manifest for a becket workspace.",
+  "type": "object",
+  "required": ["id", "created", "repos"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "description": "Workspace identifier."
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "description": "Creation date (YYYY-MM-DD)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional workspace description."
+    },
+    "repos": {
+      "type": "object",
+      "description": "Map of repository names to their workspace configuration.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["branch", "base"],
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "Feature branch name."
+          },
+          "base": {
+            "type": "string",
+            "description": "Base branch this workspace was created from."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

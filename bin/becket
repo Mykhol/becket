@@ -3,7 +3,8 @@ set -euo pipefail
 
 # ── Becket: Cross-repo worktree CLI ──────────────────────────────────────────
 
-VERSION="0.1.0"
+VERSION="0.2.0"
+USAGE_LOG="${XDG_DATA_HOME:-$HOME/.local/share}/becket/usage.log"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 
@@ -21,33 +22,36 @@ die()  { echo "${RED}error:${RESET} $*" >&2; exit 1; }
 info() { echo "${GREEN}▸${RESET} $*"; }
 warn() { echo "${YELLOW}▸${RESET} $*"; }
 
-expand_path() {
-  local p="$1"
-  p="${p/#\~/$HOME}"
-  if [[ "$p" != /* ]]; then
-    p="$(cd "$(dirname "$p")" 2>/dev/null && pwd)/$(basename "$p")"
-  fi
-  echo "$p"
+# Resolve the directory where becket's data files (schemas) are installed.
+# Script at $PREFIX/bin/becket → schemas at $PREFIX/share/becket/
+resolve_share_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  local bin_dir
+  bin_dir="$(cd -P "$(dirname "$src")" && pwd)"
+  echo "$(dirname "$bin_dir")/share/becket"
 }
 
 # ── Config discovery ────────────────────────────────────────────────────────
 
 find_config() {
   # Explicit flag or env var
-  if [[ -n "${BECKET_CONFIG_PATH:-}" ]]; then
-    echo "$BECKET_CONFIG_PATH"
+  if [[ -n "${BECKET_CONFIG:-}" ]]; then
+    echo "$BECKET_CONFIG"
     return
   fi
 
-  # Walk up from CWD
+  # Walk up from CWD looking for .becket/settings.json
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
-    if [[ -f "$dir/.becket.json" ]]; then
-      # Platform configs have a "repos" key; workspace manifests have an "id" key
-      if python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'repos' in d and 'id' not in d else 1)" "$dir/.becket.json" 2>/dev/null; then
-        echo "$dir/.becket.json"
-        return
-      fi
+    if [[ -f "$dir/.becket/settings.json" ]]; then
+      echo "$dir/.becket/settings.json"
+      return
     fi
     dir="$(dirname "$dir")"
   done
@@ -57,9 +61,66 @@ find_config() {
 
 load_config() {
   local config_file
-  config_file="$(find_config)" || die "No .becket.json found. Run 'becket init' in your platform directory."
-  PLATFORM_DIR="$(dirname "$config_file")"
+  config_file="$(find_config)" || die "No .becket/settings.json found. Run 'becket init' in your platform directory."
+  # settings.json lives at <platform>/.becket/settings.json
+  PLATFORM_DIR="$(dirname "$(dirname "$config_file")")"
   CONFIG_FILE="$config_file"
+  WORKSPACES_DIR="$PLATFORM_DIR/.becket/workspaces"
+
+  # Nudge if config looks outdated
+  local has_schema
+  has_schema="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print('yes' if '\$schema' in d else 'no')")"
+  if [[ "$has_schema" == "no" ]]; then
+    warn "Config may be outdated. Run ${BOLD}becket upgrade${RESET} to update."
+  fi
+}
+
+log_usage() {
+  local cmd="$1"
+  local workspace=""
+  workspace="$(detect_workspace_id 2>/dev/null)" || true
+  local platform=""
+  local cfg
+  if cfg="$(find_config 2>/dev/null)"; then
+    platform="$(basename "$(dirname "$(dirname "$cfg")")")"
+  fi
+  mkdir -p "$(dirname "$USAGE_LOG")" 2>/dev/null || return
+  python3 -c "
+import json, datetime, sys
+entry = {
+    'ts': datetime.datetime.utcnow().isoformat() + 'Z',
+    'cmd': sys.argv[1],
+    'workspace': sys.argv[2],
+    'platform': sys.argv[3],
+}
+with open(sys.argv[4], 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" "$cmd" "$workspace" "$platform" "$USAGE_LOG" 2>/dev/null || true
+}
+
+# Detect workspace ID from CWD (walk up looking for .becket.json)
+detect_workspace_id() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/.becket.json" ]]; then
+      python3 -c "import json; print(json.load(open('$dir/.becket.json'))['id'])"
+      return
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+# Require a workspace ID: use the argument if given, otherwise detect from CWD
+require_workspace_id() {
+  local id="${1:-}"
+  if [[ -n "$id" ]]; then
+    echo "$id"
+  elif id="$(detect_workspace_id)"; then
+    echo "$id"
+  else
+    return 1
+  fi
 }
 
 # JSON helpers using python3 (available on macOS + most Linux)
@@ -82,12 +143,83 @@ print(d if isinstance(d, str) else json.dumps(d))
 " "$@"
 }
 
+# ── AGENTS.md generation ───────────────────────────────────────────────────
+
+write_agents_md() {
+  local ws_path="$1"
+  local manifest="$ws_path/.becket.json"
+
+  python3 -c "
+import json, sys
+
+ws_path = sys.argv[1]
+manifest_path = sys.argv[2]
+
+with open(manifest_path) as f:
+    m = json.load(f)
+
+ws_id = m['id']
+desc = m.get('description', '')
+repos = m['repos']
+
+# Detect whether all repos share the same branch name
+all_branches = [info['branch'] for info in repos.values()]
+all_same_branch = len(set(all_branches)) == 1
+
+lines = []
+lines.append('# Workspace: ' + ws_id)
+lines.append('')
+if desc:
+    lines.append(desc)
+    lines.append('')
+lines.append('This directory is a **becket workspace** — a set of git worktrees grouped under a shared feature branch.')
+lines.append('')
+lines.append('## Key Facts')
+lines.append('')
+if all_same_branch:
+    lines.append('- **Branch**: \`' + all_branches[0] + '\` (same branch name across all repos)')
+lines.append('- **Workspace ID**: \`' + ws_id + '\`')
+lines.append('')
+lines.append('## Repos')
+lines.append('')
+if all_same_branch:
+    lines.append('| Directory | Base Branch |')
+    lines.append('|-----------|-------------|')
+    for name, info in repos.items():
+        lines.append('| \`' + name + '/\` | \`' + info['base'] + '\` |')
+else:
+    lines.append('| Directory | Branch | Base Branch |')
+    lines.append('|-----------|--------|-------------|')
+    for name, info in repos.items():
+        lines.append('| \`' + name + '/\` | \`' + info['branch'] + '\` | \`' + info['base'] + '\` |')
+lines.append('')
+lines.append('## Documentation')
+lines.append('')
+lines.append('The \`docs/\` directory is for all documentation related to this feature — specs, designs, notes, research, etc. Keep feature docs here rather than inside individual repos.')
+lines.append('')
+lines.append('## Important')
+lines.append('')
+lines.append('- Each subdirectory is a **git worktree**, not a clone. Commits here are real and affect the main repository.')
+if all_same_branch:
+    lines.append('- All repos share the same feature branch name, so cross-repo changes stay in sync.')
+else:
+    lines.append('- Repos in this workspace may be on different feature branches (adopted from existing work).')
+lines.append('- Do not run \`git worktree\` commands directly. Use the \`becket\` CLI to manage this workspace.')
+lines.append('- To check status: \`becket status ' + ws_id + '\`')
+lines.append('')
+
+with open(ws_path + '/AGENTS.md', 'w') as f:
+    f.write('\n'.join(lines))
+" "$ws_path" "$manifest"
+}
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_init() {
-  local config_file="$PWD/.becket.json"
+  local becket_dir="$PWD/.becket"
+  local config_file="$becket_dir/settings.json"
   if [[ -f "$config_file" ]]; then
-    die ".becket.json already exists in this directory."
+    die ".becket/settings.json already exists in this directory."
   fi
 
   info "Scanning for git repos in ${BOLD}$PWD${RESET}..."
@@ -118,54 +250,55 @@ cmd_init() {
     die "No git repos found in current directory."
   fi
 
-  # Prompt for workspaces directory
-  local default_ws="~/workspaces"
-  if [[ -t 0 ]]; then
-    printf "\n${BOLD}Workspaces directory${RESET} [${DIM}%s${RESET}]: " "$default_ws"
-    read -r ws_dir
-    ws_dir="${ws_dir:-$default_ws}"
-  else
-    ws_dir="$default_ws"
+  mkdir -p "$becket_dir"
+
+  # Copy schema if available
+  local schema_ref=""
+  local share_dir
+  share_dir="$(resolve_share_dir)"
+  if [[ -f "$share_dir/settings.schema.json" ]]; then
+    cp "$share_dir/settings.schema.json" "$becket_dir/settings.schema.json"
+    schema_ref="./settings.schema.json"
   fi
 
   python3 -c "
 import json, sys
-config = {
-    'workspacesDir': sys.argv[1],
-    'repos': json.loads(sys.argv[2]),
-    'branchPrefix': 'feature/'
-}
-with open(sys.argv[3], 'w') as f:
+schema_ref = sys.argv[3]
+config = {}
+if schema_ref:
+    config['\$schema'] = schema_ref
+config['repos'] = json.loads(sys.argv[1])
+config['branchPrefix'] = 'feature/'
+with open(sys.argv[2], 'w') as f:
     json.dump(config, f, indent=2)
     f.write('\n')
-" "$ws_dir" "$repos_json" "$config_file"
+" "$repos_json" "$config_file" "$schema_ref"
 
   info "Created ${BOLD}$config_file${RESET}"
 }
 
 cmd_create() {
-  local id="" desc="" base_override="" repos_flag=""
+  local id="" desc="" base_override="" repos_flag="" run_setup=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --desc)     desc="$2"; shift 2 ;;
       --base)     base_override="$2"; shift 2 ;;
       --repos)    repos_flag="$2"; shift 2 ;;
+      --setup)    run_setup=true; shift ;;
       -*)         die "Unknown option: $1" ;;
       *)          id="$1"; shift ;;
     esac
   done
 
-  [[ -n "$id" ]] || die "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH]"
+  [[ -n "$id" ]] || die "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH] [--setup]"
 
   load_config
 
-  local ws_dir
-  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
   local branch_prefix
   branch_prefix="$(json_get "$CONFIG_FILE" branchPrefix)"
 
-  local ws_path="$ws_dir/$id"
+  local ws_path="$WORKSPACES_DIR/$id"
   [[ ! -d "$ws_path" ]] || die "Workspace '$id' already exists at $ws_path"
 
   # Determine branch name
@@ -250,34 +383,265 @@ cmd_create() {
   done
   manifest_repos+="}"
 
+  # Copy workspace schema if available
+  local ws_schema_ref=""
+  local share_dir
+  share_dir="$(resolve_share_dir)"
+  if [[ -f "$share_dir/workspace.schema.json" ]]; then
+    cp "$share_dir/workspace.schema.json" "$ws_path/workspace.schema.json"
+    ws_schema_ref="./workspace.schema.json"
+  fi
+
   # Write workspace manifest
   python3 -c "
 import json, sys
-manifest = {
-    'id': sys.argv[1],
-    'created': sys.argv[2],
-    'description': sys.argv[3],
-    'platformDir': sys.argv[4],
-    'repos': json.loads(sys.argv[5])
-}
-with open(sys.argv[6], 'w') as f:
+schema_ref = sys.argv[6]
+manifest = {}
+if schema_ref:
+    manifest['\$schema'] = schema_ref
+manifest['id'] = sys.argv[1]
+manifest['created'] = sys.argv[2]
+manifest['description'] = sys.argv[3]
+manifest['repos'] = json.loads(sys.argv[4])
+with open(sys.argv[5], 'w') as f:
     json.dump(manifest, f, indent=2)
     f.write('\n')
-" "$id" "$(date +%Y-%m-%d)" "$desc" "$PLATFORM_DIR" "$manifest_repos" "$ws_path/.becket.json"
+" "$id" "$(date +%Y-%m-%d)" "$desc" "$manifest_repos" "$ws_path/.becket.json" "$ws_schema_ref"
+
+  write_agents_md "$ws_path"
+
+  # Copy platform files into workspace root
+  local files=()
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && files+=("$f")
+  done < <(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+for f in d.get('files', []):
+    print(f)
+" "$CONFIG_FILE")
+
+  for file in "${files[@]}"; do
+    local src="$PLATFORM_DIR/$file"
+    if [[ -e "$src" ]]; then
+      cp -a "$src" "$ws_path/"
+      info "Copied: ${BOLD}$file${RESET}"
+    else
+      warn "File not found, skipping: $file"
+    fi
+  done
 
   echo ""
   info "Workspace ${BOLD}$id${RESET} ready at ${BOLD}$ws_path${RESET}"
   info "Branch: ${BOLD}$branch${RESET}"
+
+  if [[ "$run_setup" == true ]]; then
+    echo ""
+    cmd_setup "$id"
+  fi
+}
+
+cmd_adopt() {
+  local id="" base_override="" repos_flag="" run_setup=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base)     base_override="$2"; shift 2 ;;
+      --repos)    repos_flag="$2"; shift 2 ;;
+      --setup)    run_setup=true; shift ;;
+      -*)         die "Unknown option: $1" ;;
+      *)          id="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$id" ]] || die "Usage: becket adopt <id> [--repos r1,r2] [--base BRANCH] [--setup]"
+
+  load_config
+
+  local ws_path="$WORKSPACES_DIR/$id"
+  [[ ! -d "$ws_path" ]] || die "Workspace '$id' already exists at $ws_path"
+
+  # Determine which repos to include
+  local all_repos=()
+  while IFS= read -r r; do
+    all_repos+=("$r")
+  done < <(json_keys "$CONFIG_FILE" repos)
+
+  local selected_repos=()
+  if [[ -n "$repos_flag" ]]; then
+    IFS=',' read -ra selected_repos <<< "$repos_flag"
+  elif [[ -t 0 ]]; then
+    echo ""
+    echo "${BOLD}Select repos to include:${RESET}"
+    for i in "${!all_repos[@]}"; do
+      echo "  $((i+1)). ${all_repos[$i]}"
+    done
+    echo "  ${DIM}Enter numbers separated by spaces, or press Enter for all${RESET}"
+    printf "> "
+    read -r selection
+    if [[ -z "$selection" ]]; then
+      selected_repos=("${all_repos[@]}")
+    else
+      for num in $selection; do
+        local idx=$((num - 1))
+        if [[ $idx -ge 0 && $idx -lt ${#all_repos[@]} ]]; then
+          selected_repos+=("${all_repos[$idx]}")
+        fi
+      done
+    fi
+  else
+    selected_repos=("${all_repos[@]}")
+  fi
+
+  [[ ${#selected_repos[@]} -gt 0 ]] || die "No repos selected."
+
+  # Validate repos and detect their current branches (parallel array to selected_repos)
+  local detected_branches=()
+  for repo in "${selected_repos[@]}"; do
+    json_nested "$CONFIG_FILE" repos "$repo" path &>/dev/null || die "Repo '$repo' not found in config."
+
+    local repo_rel_path
+    repo_rel_path="$(json_nested "$CONFIG_FILE" repos "$repo" path)"
+    local repo_abs_path
+    repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
+
+    local current_branch
+    current_branch="$(git -C "$repo_abs_path" branch --show-current 2>/dev/null)" \
+      || die "Could not read branch for '$repo'."
+    [[ -n "$current_branch" ]] || die "Repo '$repo' is in detached HEAD state."
+
+    local base="${base_override:-$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)}"
+    [[ "$current_branch" != "$base" ]] \
+      || die "Repo '$repo' is already on base branch '$base'. Nothing to adopt."
+
+    detected_branches+=("$current_branch")
+    info "Detected ${BOLD}$repo${RESET} on branch ${BOLD}$current_branch${RESET}"
+  done
+
+  # Create workspace directory
+  mkdir -p "$ws_path/docs"
+  info "Created workspace: ${BOLD}$ws_path${RESET}"
+
+  # For each repo: stash if dirty, checkout base to free the branch, create worktree, restore stash
+  local manifest_repos="{"
+  local first=true
+  local stashed_repos=()
+
+  for i in "${!selected_repos[@]}"; do
+    local repo="${selected_repos[$i]}"
+    local branch="${detected_branches[$i]}"
+
+    local repo_rel_path
+    repo_rel_path="$(json_nested "$CONFIG_FILE" repos "$repo" path)"
+    local repo_abs_path
+    repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
+
+    local base="${base_override:-$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)}"
+    local wt_path="$ws_path/$repo"
+
+    # Auto-stash if dirty so we can safely switch branches
+    if ! git -C "$repo_abs_path" diff --quiet 2>/dev/null || \
+       ! git -C "$repo_abs_path" diff --cached --quiet 2>/dev/null; then
+      warn "Stashing uncommitted changes in ${BOLD}$repo${RESET}..."
+      git -C "$repo_abs_path" stash push -m "becket adopt $id"
+      stashed_repos+=("$repo")
+    fi
+
+    # Free the feature branch by switching the main dir to base
+    info "Switching ${BOLD}$repo${RESET} main dir → ${BOLD}$base${RESET}..."
+    git -C "$repo_abs_path" checkout "$base"
+
+    # Create worktree for the existing branch (no -b: reuse, don't create)
+    info "Creating worktree: ${BOLD}$repo${RESET} → ${BOLD}$branch${RESET}"
+    git -C "$repo_abs_path" worktree add "$wt_path" "$branch"
+
+    # Restore stash in the worktree (stashes are per-repo, visible from any worktree)
+    local was_stashed=false
+    if [[ ${#stashed_repos[@]} -gt 0 ]]; then
+      for sr in "${stashed_repos[@]}"; do
+        [[ "$sr" == "$repo" ]] && was_stashed=true && break
+      done
+    fi
+    if [[ "$was_stashed" == true ]]; then
+      info "Restoring stashed changes into workspace ${BOLD}$repo${RESET}..."
+      git -C "$wt_path" stash pop
+    fi
+
+    if [[ "$first" == true ]]; then
+      first=false
+    else
+      manifest_repos+=","
+    fi
+    manifest_repos+="\"$repo\":{\"branch\":\"$branch\",\"base\":\"$base\"}"
+  done
+  manifest_repos+="}"
+
+  # Copy workspace schema if available
+  local ws_schema_ref=""
+  local share_dir
+  share_dir="$(resolve_share_dir)"
+  if [[ -f "$share_dir/workspace.schema.json" ]]; then
+    cp "$share_dir/workspace.schema.json" "$ws_path/workspace.schema.json"
+    ws_schema_ref="./workspace.schema.json"
+  fi
+
+  # Write workspace manifest
+  python3 -c "
+import json, sys
+schema_ref = sys.argv[6]
+manifest = {}
+if schema_ref:
+    manifest['\$schema'] = schema_ref
+manifest['id'] = sys.argv[1]
+manifest['created'] = sys.argv[2]
+manifest['description'] = sys.argv[3]
+manifest['repos'] = json.loads(sys.argv[4])
+with open(sys.argv[5], 'w') as f:
+    json.dump(manifest, f, indent=2)
+    f.write('\n')
+" "$id" "$(date +%Y-%m-%d)" "" "$manifest_repos" "$ws_path/.becket.json" "$ws_schema_ref"
+
+  write_agents_md "$ws_path"
+
+  # Copy platform files into workspace root
+  local files=()
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && files+=("$f")
+  done < <(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+for f in d.get('files', []):
+    print(f)
+" "$CONFIG_FILE")
+
+  for file in "${files[@]}"; do
+    local src="$PLATFORM_DIR/$file"
+    if [[ -e "$src" ]]; then
+      cp -a "$src" "$ws_path/"
+      info "Copied: ${BOLD}$file${RESET}"
+    else
+      warn "File not found, skipping: $file"
+    fi
+  done
+
+  echo ""
+  info "Workspace ${BOLD}$id${RESET} ready at ${BOLD}$ws_path${RESET}"
+  info "Adopted branches:"
+  for i in "${!selected_repos[@]}"; do
+    info "  ${BOLD}${selected_repos[$i]}${RESET} → ${detected_branches[$i]}"
+  done
+
+  if [[ "$run_setup" == true ]]; then
+    echo ""
+    cmd_setup "$id"
+  fi
 }
 
 cmd_list() {
   load_config
 
-  local ws_dir
-  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
-
-  if [[ ! -d "$ws_dir" ]]; then
-    echo "No workspaces directory found at $ws_dir"
+  if [[ ! -d "$WORKSPACES_DIR" ]]; then
+    echo "No workspaces found."
     return
   fi
 
@@ -285,12 +649,8 @@ cmd_list() {
   printf "\n${BOLD}%-20s %-40s %-12s %s${RESET}\n" "ID" "REPOS" "CREATED" "DESCRIPTION"
   printf "%-20s %-40s %-12s %s\n" "──────────────────" "────────────────────────────────────────" "────────────" "───────────────"
 
-  for manifest in "$ws_dir"/*/.becket.json; do
+  for manifest in "$WORKSPACES_DIR"/*/.becket.json; do
     [[ -f "$manifest" ]] || continue
-
-    # Only process workspace manifests (have "id" key)
-    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'id' in d else 1)" "$manifest" 2>/dev/null || continue
-
     found=true
     local ws_id ws_created ws_desc ws_repos
     ws_id="$(json_get "$manifest" id)"
@@ -310,19 +670,20 @@ cmd_list() {
 cmd_status() {
   load_config
 
-  local ws_dir
-  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
   local target_id="${1:-}"
+  if [[ -z "$target_id" ]]; then
+    target_id="$(detect_workspace_id 2>/dev/null)" || true
+  fi
 
   local manifests=()
   if [[ -n "$target_id" ]]; then
-    local m="$ws_dir/$target_id/.becket.json"
+    local m="$WORKSPACES_DIR/$target_id/.becket.json"
     [[ -f "$m" ]] || die "Workspace '$target_id' not found."
     manifests+=("$m")
   else
-    for m in "$ws_dir"/*/.becket.json; do
+    for m in "$WORKSPACES_DIR"/*/.becket.json; do
       [[ -f "$m" ]] || continue
-      python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'id' in d else 1)" "$m" 2>/dev/null && manifests+=("$m")
+      manifests+=("$m")
     done
   fi
 
@@ -387,19 +748,16 @@ cmd_teardown() {
     esac
   done
 
-  [[ -n "$id" ]] || die "Usage: becket teardown <id> [--delete-branches]"
+  if [[ -z "$id" ]]; then
+    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket teardown [id] [--delete-branches] (or run from inside a workspace)"
+  fi
 
   load_config
 
-  local ws_dir
-  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
-  local ws_path="$ws_dir/$id"
+  local ws_path="$WORKSPACES_DIR/$id"
   local manifest="$ws_path/.becket.json"
 
   [[ -f "$manifest" ]] || die "Workspace '$id' not found."
-
-  local platform_dir
-  platform_dir="$(json_get "$manifest" platformDir)"
 
   local repos=()
   while IFS= read -r r; do
@@ -414,7 +772,7 @@ cmd_teardown() {
       continue
     }
     local repo_abs_path
-    repo_abs_path="$(cd "$platform_dir" && cd "$repo_rel_path" && pwd)"
+    repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
     local wt_path="$ws_path/$repo"
 
     if [[ -d "$wt_path" ]]; then
@@ -439,16 +797,22 @@ cmd_teardown() {
 }
 
 cmd_add() {
-  local id="${1:-}"
-  local repo="${2:-}"
+  local id="" repo=""
 
-  [[ -n "$id" && -n "$repo" ]] || die "Usage: becket add <id> <repo>"
+  # Two args: becket add <id> <repo>
+  # One arg from inside workspace: becket add <repo>
+  if [[ $# -ge 2 ]]; then
+    id="$1"; repo="$2"
+  elif [[ $# -eq 1 ]]; then
+    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket add [id] <repo> (or run from inside a workspace)"
+    repo="$1"
+  else
+    die "Usage: becket add [id] <repo>"
+  fi
 
   load_config
 
-  local ws_dir
-  ws_dir="$(expand_path "$(json_get "$CONFIG_FILE" workspacesDir)")"
-  local ws_path="$ws_dir/$id"
+  local ws_path="$WORKSPACES_DIR/$id"
   local manifest="$ws_path/.becket.json"
 
   [[ -f "$manifest" ]] || die "Workspace '$id' not found."
@@ -501,7 +865,500 @@ with open(manifest_path, 'w') as f:
     f.write('\n')
 " "$manifest" "$repo" "$existing_branch" "$base"
 
+  write_agents_md "$ws_path"
+
   info "Added ${BOLD}$repo${RESET} to workspace ${BOLD}$id${RESET}"
+}
+
+cmd_setup() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket setup [id] (or run from inside a workspace)"
+  fi
+
+  load_config
+
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  # Get repos that are in this workspace
+  local ws_repos=()
+  while IFS= read -r r; do
+    ws_repos+=("$r")
+  done < <(json_keys "$manifest" repos)
+
+  # Start docker services if configured
+  local docker_compose
+  docker_compose="$(json_get "$CONFIG_FILE" docker)"
+  if [[ -n "$docker_compose" && "$docker_compose" != '""' ]]; then
+    local compose_path="$ws_path/$docker_compose"
+    if [[ -f "$compose_path" ]]; then
+      info "Starting Docker services..."
+      docker compose -f "$compose_path" up -d
+    else
+      warn "Docker compose file not found: $compose_path"
+    fi
+  fi
+
+  # Run setup commands for each workspace repo
+  for repo in "${ws_repos[@]}"; do
+    # Read setup commands and env from platform config
+    local setup_json env_json
+    setup_json="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+repo = d.get('repos', {}).get(sys.argv[2], {})
+print(json.dumps(repo.get('setup', [])))
+" "$CONFIG_FILE" "$repo")"
+
+    env_json="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+repo = d.get('repos', {}).get(sys.argv[2], {})
+print(json.dumps(repo.get('env', {})))
+" "$CONFIG_FILE" "$repo")"
+
+    local cmds=()
+    while IFS= read -r c; do
+      [[ -n "$c" ]] && cmds+=("$c")
+    done < <(python3 -c "import json,sys; [print(c) for c in json.loads(sys.argv[1])]" "$setup_json")
+
+    if [[ ${#cmds[@]} -eq 0 ]]; then
+      info "No setup commands for ${BOLD}$repo${RESET}, skipping."
+      continue
+    fi
+
+    local wt_path="$ws_path/$repo"
+    [[ -d "$wt_path" ]] || { warn "Worktree missing for $repo, skipping."; continue; }
+
+    info "Setting up ${BOLD}$repo${RESET}..."
+
+    # Build env export prefix
+    local env_prefix
+    env_prefix="$(python3 -c "
+import json, sys
+env = json.loads(sys.argv[1])
+parts = ['export {}={}'.format(k, v) for k, v in env.items()]
+print(' && '.join(parts) + ' && ' if parts else '')
+" "$env_json")"
+
+    for cmd in "${cmds[@]}"; do
+      info "  Running: ${DIM}$cmd${RESET}"
+      if ! (cd "$wt_path" && eval "${env_prefix}${cmd}"); then
+        warn "  Command failed: $cmd"
+        if [[ -t 0 ]]; then
+          printf "  Continue with remaining setup? [Y/n] "
+          read -r answer
+          [[ "$answer" =~ ^[Nn] ]] && die "Setup aborted."
+        fi
+      fi
+    done
+  done
+
+  echo ""
+  info "Setup complete for workspace ${BOLD}$id${RESET}."
+}
+
+cmd_dev() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket dev [id] (or run from inside a workspace)"
+  fi
+
+  load_config
+
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  # Determine tmux session name
+  local session
+  session="$(json_get "$CONFIG_FILE" session)"
+  if [[ -z "$session" || "$session" == '""' ]]; then
+    session="$id"
+  fi
+
+  # Get repos that are in this workspace
+  local ws_repos=()
+  while IFS= read -r r; do
+    ws_repos+=("$r")
+  done < <(json_keys "$manifest" repos)
+
+  # Start docker services if configured
+  local docker_compose
+  docker_compose="$(json_get "$CONFIG_FILE" docker)"
+  if [[ -n "$docker_compose" && "$docker_compose" != '""' ]]; then
+    local compose_path="$ws_path/$docker_compose"
+    if [[ -f "$compose_path" ]]; then
+      info "Starting Docker services..."
+      docker compose -f "$compose_path" up -d
+    else
+      warn "Docker compose file not found: $compose_path"
+    fi
+  fi
+
+  # Build list of repos with dev commands (repo\tdev_cmd\tenv_prefix per line)
+  local dev_entries
+  dev_entries="$(python3 -c "
+import json, sys
+
+config_path = sys.argv[1]
+repos = sys.argv[2:]
+
+with open(config_path) as f:
+    config = json.load(f)
+
+for repo_name in repos:
+    repo = config.get('repos', {}).get(repo_name, {})
+    dev_cmd = repo.get('dev', '')
+    if not dev_cmd:
+        continue
+    env = repo.get('env', {})
+    env_prefix = ' && '.join('export {}={}'.format(k, v) for k, v in env.items())
+    if env_prefix:
+        env_prefix += ' && '
+    print('{}\t{}\t{}'.format(repo_name, dev_cmd, env_prefix))
+" "$CONFIG_FILE" "${ws_repos[@]}")"
+
+  if [[ -z "$dev_entries" ]]; then
+    die "No repos in workspace '$id' have a 'dev' command configured."
+  fi
+
+  info "Starting tmux session ${BOLD}$session${RESET}..."
+
+  # Kill existing session if present
+  tmux kill-session -t "$session" 2>/dev/null || true
+
+  local first=true first_repo=""
+  while IFS=$'\t' read -r repo dev_cmd env_prefix; do
+    local wt_path="$ws_path/$repo"
+    local full_cmd="${env_prefix}${dev_cmd}"
+
+    if [[ "$first" == true ]]; then
+      tmux new-session -d -s "$session" -n "$repo" -c "$wt_path"
+      first_repo="$repo"
+      first=false
+    else
+      tmux new-window -t "$session" -n "$repo" -c "$wt_path"
+    fi
+    tmux send-keys -t "$session:$repo" "$full_cmd" Enter
+    info "  ${BOLD}$repo${RESET} → ${DIM}$dev_cmd${RESET}"
+  done <<< "$dev_entries"
+
+  # Select first window and attach
+  tmux select-window -t "$session:$first_repo"
+  tmux attach-session -t "$session"
+}
+
+cmd_upgrade() {
+  load_config
+
+  local share_dir
+  share_dir="$(resolve_share_dir)"
+  local becket_dir="$PLATFORM_DIR/.becket"
+
+  # ── Upgrade settings.json ──────────────────────────────────────────────────
+
+  # Copy latest schema file
+  local schema_available=false
+  if [[ -f "$share_dir/settings.schema.json" ]]; then
+    cp "$share_dir/settings.schema.json" "$becket_dir/settings.schema.json"
+    schema_available=true
+  fi
+
+  python3 -c "
+import json, sys
+
+config_path = sys.argv[1]
+schema_available = sys.argv[2] == 'true'
+
+with open(config_path) as f:
+    config = json.load(f)
+
+# ── Defaults for settings.json ──
+# Add new fields here as becket evolves. Only missing keys are filled in;
+# existing user values are never overwritten.
+DEFAULTS = {
+    'branchPrefix': 'feature/',
+}
+
+changed = False
+
+# Ensure \$schema is first key
+if schema_available and '\$schema' not in config:
+    config = {'\$schema': './settings.schema.json', **config}
+    changed = True
+elif schema_available and config.get('\$schema') != './settings.schema.json':
+    config['\$schema'] = './settings.schema.json'
+    changed = True
+
+# Fill missing defaults
+for key, default in DEFAULTS.items():
+    if key not in config:
+        config[key] = default
+        changed = True
+
+if changed:
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+        f.write('\n')
+
+sys.exit(0 if changed else 1)
+" "$CONFIG_FILE" "$schema_available" 2>/dev/null \
+    && info "Updated ${BOLD}settings.json${RESET}" \
+    || info "settings.json is already current."
+
+  # ── Upgrade workspace manifests ────────────────────────────────────────────
+
+  local ws_schema_available=false
+  if [[ -f "$share_dir/workspace.schema.json" ]]; then
+    ws_schema_available=true
+  fi
+
+  if [[ -d "$WORKSPACES_DIR" ]]; then
+    for manifest in "$WORKSPACES_DIR"/*/.becket.json; do
+      [[ -f "$manifest" ]] || continue
+      local ws_path
+      ws_path="$(dirname "$manifest")"
+      local ws_id
+      ws_id="$(json_get "$manifest" id)"
+
+      # Copy latest workspace schema
+      if [[ "$ws_schema_available" == true ]]; then
+        cp "$share_dir/workspace.schema.json" "$ws_path/workspace.schema.json"
+      fi
+
+      python3 -c "
+import json, sys
+
+manifest_path = sys.argv[1]
+schema_available = sys.argv[2] == 'true'
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+
+# ── Defaults for workspace manifests ──
+# Add new fields here as becket evolves.
+DEFAULTS = {}
+
+changed = False
+
+# Ensure \$schema is first key
+if schema_available and '\$schema' not in manifest:
+    manifest = {'\$schema': './workspace.schema.json', **manifest}
+    changed = True
+elif schema_available and manifest.get('\$schema') != './workspace.schema.json':
+    manifest['\$schema'] = './workspace.schema.json'
+    changed = True
+
+for key, default in DEFAULTS.items():
+    if key not in manifest:
+        manifest[key] = default
+        changed = True
+
+if changed:
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+        f.write('\n')
+
+sys.exit(0 if changed else 1)
+" "$manifest" "$ws_schema_available" 2>/dev/null \
+        && info "Updated workspace: ${BOLD}$ws_id${RESET}" \
+        || info "Workspace ${BOLD}$ws_id${RESET} is already current."
+    done
+  fi
+
+  # ── Seed new platform files into existing workspaces ───────────────────────
+
+  local seed_files=()
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && seed_files+=("$f")
+  done < <(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+for f in d.get('files', []):
+    print(f)
+" "$CONFIG_FILE")
+
+  if [[ ${#seed_files[@]} -gt 0 ]] && [[ -d "$WORKSPACES_DIR" ]]; then
+    local seeded_any=false
+    for manifest in "$WORKSPACES_DIR"/*/.becket.json; do
+      [[ -f "$manifest" ]] || continue
+      local ws_path
+      ws_path="$(dirname "$manifest")"
+      local ws_id
+      ws_id="$(json_get "$manifest" id)"
+      for file in "${seed_files[@]}"; do
+        local src="$PLATFORM_DIR/$file"
+        local dst="$ws_path/$(basename "$file")"
+        if [[ ! -e "$src" ]]; then
+          continue
+        fi
+        if [[ ! -e "$dst" ]]; then
+          cp -a "$src" "$ws_path/"
+          info "Seeded ${BOLD}$file${RESET} → workspace ${BOLD}$ws_id${RESET}"
+          seeded_any=true
+        fi
+      done
+    done
+    if [[ "$seeded_any" == false ]]; then
+      info "Workspace files are already up to date."
+    fi
+  fi
+
+  echo ""
+  info "Upgrade complete."
+}
+
+cmd_shell() {
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket shell [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  [[ -d "$ws_path" ]] || die "Workspace '$id' not found."
+  info "Entering workspace ${BOLD}$id${RESET} — type 'exit' to return"
+  cd "$ws_path" && exec "${SHELL:-bash}"
+}
+
+cmd_sync() {
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket sync [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  while IFS= read -r repo; do
+    local wt_path="$ws_path/$repo"
+    local base
+    base="$(json_nested "$manifest" repos "$repo" base)"
+    info "Syncing ${BOLD}$repo${RESET} ← origin/$base..."
+    git -C "$wt_path" fetch origin "$base"
+    git -C "$wt_path" rebase "origin/$base"
+  done < <(json_keys "$manifest" repos)
+
+  echo ""
+  info "Sync complete."
+}
+
+cmd_push() {
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket push [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  while IFS= read -r repo; do
+    local wt_path="$ws_path/$repo"
+    local branch
+    branch="$(json_nested "$manifest" repos "$repo" branch)"
+    info "Pushing ${BOLD}$repo${RESET} → origin/$branch..."
+    git -C "$wt_path" push -u origin "$branch"
+  done < <(json_keys "$manifest" repos)
+
+  echo ""
+  info "Push complete."
+}
+
+cmd_pr() {
+  command -v gh &>/dev/null || die "'gh' (GitHub CLI) not found. Install: https://cli.github.com"
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket pr [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  local ws_desc
+  ws_desc="$(json_get "$manifest" description)"
+  local title="$id"
+  [[ -n "$ws_desc" && "$ws_desc" != '""' ]] && title="$id: $ws_desc"
+
+  while IFS= read -r repo; do
+    local wt_path="$ws_path/$repo"
+    local branch base
+    branch="$(json_nested "$manifest" repos "$repo" branch)"
+    base="$(json_nested "$manifest" repos "$repo" base)"
+    info "Creating PR for ${BOLD}$repo${RESET} ($branch → $base)..."
+    (cd "$wt_path" && gh pr create \
+      --title "$title" \
+      --body "Workspace: \`$id\`" \
+      --base "$base" \
+      --head "$branch") || warn "PR for $repo may already exist — skipping."
+  done < <(json_keys "$manifest" repos)
+}
+
+cmd_log() {
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket log [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  while IFS= read -r repo; do
+    local wt_path="$ws_path/$repo"
+    local branch base
+    branch="$(json_nested "$manifest" repos "$repo" branch)"
+    base="$(json_nested "$manifest" repos "$repo" base)"
+    echo ""
+    printf "${BOLD}%s${RESET}  ${DIM}%s${RESET}\n" "$repo" "$branch"
+    printf '%s\n' "──────────────────────────────────────────────────"
+    git -C "$wt_path" log --oneline --graph "origin/$base..$branch" 2>/dev/null \
+      || git -C "$wt_path" log --oneline -10
+  done < <(json_keys "$manifest" repos)
+
+  echo ""
+}
+
+cmd_stats() {
+  if [[ ! -f "$USAGE_LOG" ]]; then
+    echo "No usage data yet. Run some becket commands to start collecting stats."
+    return
+  fi
+  python3 -c "
+import json, sys
+from collections import Counter
+
+entries = []
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except Exception:
+            pass
+
+if not entries:
+    print('No usage data yet.')
+    sys.exit(0)
+
+total = len(entries)
+cmd_counts = Counter(e['cmd'] for e in entries)
+ws_counts  = Counter(e['workspace'] for e in entries if e.get('workspace'))
+plat_counts = Counter(e['platform'] for e in entries if e.get('platform'))
+
+print(f'Total commands run: {total}')
+print()
+print('Command usage:')
+for cmd, count in cmd_counts.most_common():
+    bar = chr(0x2588) * min(count, 30)
+    print(f'  {cmd:<15} {count:>5}  {bar}')
+if ws_counts:
+    print()
+    print('Most active workspaces:')
+    for ws, count in ws_counts.most_common(5):
+        print(f'  {ws:<25} {count:>5}')
+if plat_counts:
+    print()
+    print('Platforms:')
+    for p, count in plat_counts.most_common():
+        print(f'  {p:<25} {count:>5}')
+" "$USAGE_LOG"
 }
 
 cmd_help() {
@@ -511,24 +1368,60 @@ ${BOLD}becket${RESET} v${VERSION} — Cross-repo worktree CLI
 ${BOLD}USAGE${RESET}
   becket <command> [options]
 
-${BOLD}COMMANDS${RESET}
-  init                          Create .becket.json in current directory
-  create <id> [options]         Create feature workspace + worktrees
-  list                          List all active feature workspaces
+${BOLD}PLATFORM${RESET}
+  init                          Initialize .becket/ in current directory
+  list                          List all active workspaces
+  stats                         Show local command usage statistics
+  upgrade                       Update config + schemas to latest version
+
+${BOLD}WORKSPACE${RESET}
+  create <id> [options]         Create workspace + worktrees
+  adopt <id> [options]          Adopt existing branches into a new workspace
+  teardown [id] [options]       Remove worktrees + workspace
+  add [id] <repo>               Add a repo to an existing workspace
+
+${BOLD}WORKSPACE — DEVELOP${RESET}
+  shell [id]                    Open a shell inside the workspace directory
+  dev [id]                      Start dev environment (docker + tmux)
+  setup [id]                    Run setup commands for workspace repos
+
+${BOLD}WORKSPACE — SYNC & SHIP${RESET}
   status [id]                   Show branch status across repos
-  teardown <id> [options]       Remove worktrees + workspace
-  add <id> <repo>               Add a repo to existing workspace
+  log [id]                      Show commits across all repos since branching
+  sync [id]                     Rebase all repos against their base branch
+  push [id]                     Push all repo branches to origin
+  pr [id]                       Open GitHub PRs for all repos (requires gh)
 
 ${BOLD}CREATE OPTIONS${RESET}
   --desc TEXT                   Description (appended to branch name)
   --repos r1,r2                 Repos to include (default: interactive)
   --base BRANCH                 Override base branch for all repos
+  --setup                       Run setup commands after creating workspace
+
+${BOLD}ADOPT OPTIONS${RESET}
+  --repos r1,r2                 Repos to include (default: interactive)
+  --base BRANCH                 Override base branch for all repos
+  --setup                       Run setup commands after adopting
 
 ${BOLD}TEARDOWN OPTIONS${RESET}
   --delete-branches             Also delete feature branches
 
 ${BOLD}ENVIRONMENT${RESET}
-  BECKET_CONFIG                 Path to .becket.json (overrides discovery)
+  BECKET_CONFIG                 Path to settings.json (overrides discovery)
+
+${BOLD}CONFIG (settings.json)${RESET}
+  repos                         Map of repo names to path + defaultBase
+    setup                       List of commands to run during first-time setup
+    dev                         Command to start the dev server (for tmux)
+    env                         Environment variables for setup and dev
+  branchPrefix                  Prefix for feature branches (default: feature/)
+  files                         List of files to copy into each workspace root
+  docker                        Path to docker-compose file (relative to workspace)
+  session                       Tmux session name for 'becket dev' (default: workspace ID)
+
+${BOLD}FILES${RESET}
+  .becket/settings.json         Platform config
+  .becket/workspaces/<id>/      Workspace directories
 EOF
 }
 
@@ -538,13 +1431,25 @@ main() {
   local cmd="${1:-help}"
   shift || true
 
+  log_usage "$cmd"
+
   case "$cmd" in
     init)     cmd_init "$@" ;;
     create)   cmd_create "$@" ;;
+    adopt)    cmd_adopt "$@" ;;
     list)     cmd_list "$@" ;;
     status)   cmd_status "$@" ;;
     teardown) cmd_teardown "$@" ;;
     add)      cmd_add "$@" ;;
+    setup)    cmd_setup "$@" ;;
+    dev)      cmd_dev "$@" ;;
+    shell)    cmd_shell "$@" ;;
+    sync)     cmd_sync "$@" ;;
+    push)     cmd_push "$@" ;;
+    pr)       cmd_pr "$@" ;;
+    log)      cmd_log "$@" ;;
+    stats)    cmd_stats "$@" ;;
+    upgrade)  cmd_upgrade "$@" ;;
     help|--help|-h) cmd_help ;;
     version|--version|-v) echo "becket v${VERSION}" ;;
     *)        die "Unknown command: $cmd. Run 'becket help' for usage." ;;
