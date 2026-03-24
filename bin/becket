@@ -1217,8 +1217,37 @@ cmd_shell() {
   id="$(require_workspace_id "${1:-}")" || die "Usage: becket shell [id] (or run from inside a workspace)"
   local ws_path="$WORKSPACES_DIR/$id"
   [[ -d "$ws_path" ]] || die "Workspace '$id' not found."
-  info "Entering workspace ${BOLD}$id${RESET} — type 'exit' to return"
-  cd "$ws_path" && exec "${SHELL:-bash}"
+  echo "$ws_path"
+}
+
+cmd_shell_init() {
+  # Resolve install prefix from this script's location
+  local self_dir
+  self_dir="$(cd "$(dirname "$0")" && pwd)"
+  local prefix="${self_dir%/bin}"
+
+  # Shell wrapper function (single-quoted heredoc — no expansion)
+  cat <<'INIT'
+becket() {
+  if [[ "$1" == "shell" ]]; then
+    local _becket_dir
+    _becket_dir="$(command becket shell "${@:2}")" || return $?
+    builtin cd "$_becket_dir"
+  else
+    command becket "$@"
+  fi
+}
+INIT
+
+  # Completions (prefix is expanded at generation time)
+  cat <<INIT
+if [[ -n "\$ZSH_VERSION" ]]; then
+  fpath=("$prefix/share/zsh/site-functions" \$fpath)
+  autoload -Uz _becket 2>/dev/null && compdef _becket becket 2>/dev/null
+elif [[ -n "\$BASH_VERSION" ]]; then
+  [[ -f "$prefix/share/bash-completion/completions/becket" ]] && source "$prefix/share/bash-completion/completions/becket"
+fi
+INIT
 }
 
 cmd_sync() {
@@ -1381,7 +1410,8 @@ ${BOLD}WORKSPACE${RESET}
   add [id] <repo>               Add a repo to an existing workspace
 
 ${BOLD}WORKSPACE — DEVELOP${RESET}
-  shell [id]                    Open a shell inside the workspace directory
+  shell [id]                    Print workspace directory path (use with shell-init)
+  shell-init                    Output shell wrapper for eval (enables 'becket shell' as cd)
   dev [id]                      Start dev environment (docker + tmux)
   setup [id]                    Run setup commands for workspace repos
 
@@ -1405,6 +1435,9 @@ ${BOLD}ADOPT OPTIONS${RESET}
 
 ${BOLD}TEARDOWN OPTIONS${RESET}
   --delete-branches             Also delete feature branches
+
+${BOLD}SHELL INTEGRATION${RESET}
+  Add to your .zshrc or .bashrc:    eval "\$(becket shell-init)"
 
 ${BOLD}ENVIRONMENT${RESET}
   BECKET_CONFIG                 Path to settings.json (overrides discovery)
@@ -1443,7 +1476,8 @@ main() {
     add)      cmd_add "$@" ;;
     setup)    cmd_setup "$@" ;;
     dev)      cmd_dev "$@" ;;
-    shell)    cmd_shell "$@" ;;
+    shell)      cmd_shell "$@" ;;
+    shell-init) cmd_shell_init "$@" ;;
     sync)     cmd_sync "$@" ;;
     push)     cmd_push "$@" ;;
     pr)       cmd_pr "$@" ;;

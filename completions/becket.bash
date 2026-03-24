@@ -50,7 +50,7 @@ _becket() {
 
   # First argument: command
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "init create list status teardown add setup dev shell sync push pr log stats upgrade help version" -- "$cur") )
+    COMPREPLY=( $(compgen -W "init create list status teardown add setup dev shell shell-init sync push pr log stats upgrade help version" -- "$cur") )
     return
   fi
 
