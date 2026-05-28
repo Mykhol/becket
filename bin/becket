@@ -417,22 +417,32 @@ with open(sys.argv[2], 'w') as f:
 }
 
 cmd_create() {
-  local id="" desc="" base_override="" repos_flag="" run_setup=false
+  local id="" desc="" base_override="" repos_flag="" run_setup=false stack_parent=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --desc)     desc="$2"; shift 2 ;;
-      --base)     base_override="$2"; shift 2 ;;
-      --repos)    repos_flag="$2"; shift 2 ;;
-      --setup)    run_setup=true; shift ;;
-      -*)         die "Unknown option: $1" ;;
-      *)          id="$1"; shift ;;
+      --desc)        desc="$2"; shift 2 ;;
+      --base)        base_override="$2"; shift 2 ;;
+      --repos)       repos_flag="$2"; shift 2 ;;
+      --setup)       run_setup=true; shift ;;
+      --stacked-on)  stack_parent="$2"; shift 2 ;;
+      -*)            die "Unknown option: $1" ;;
+      *)             id="$1"; shift ;;
     esac
   done
 
-  [[ -n "$id" ]] || die "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH] [--setup]"
+  [[ -n "$id" ]] || die "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH] [--stacked-on PARENT_ID] [--setup]"
 
   load_config
+
+  # Resolve stack parent: validate and pre-read so we can use its branches
+  # as the base for matching repos.
+  local parent_manifest=""
+  if [[ -n "$stack_parent" ]]; then
+    parent_manifest="$WORKSPACES_DIR/$stack_parent/.becket.json"
+    [[ -f "$parent_manifest" ]] || die "Stack parent '$stack_parent' not found (expected $parent_manifest)."
+    [[ -n "$base_override" ]] && die "Cannot combine --base with --stacked-on (the parent's branches are the base)."
+  fi
 
   local branch_prefix
   branch_prefix="$(json_get "$CONFIG_FILE" branchPrefix)"
@@ -502,7 +512,19 @@ cmd_create() {
     repo_abs_path="$(cd "$PLATFORM_DIR" && cd "$repo_rel_path" && pwd)"
 
     local base
-    if [[ -n "$base_override" ]]; then
+    if [[ -n "$stack_parent" ]]; then
+      # When stacked: base on the parent's branch for this repo, if the parent has it.
+      # If the parent doesn't include this repo, fall through to the default base —
+      # this repo is "above the stack split" and stacks back to main.
+      local parent_branch
+      parent_branch="$(json_nested_safe "$parent_manifest" repos "$repo" branch 2>/dev/null || true)"
+      if [[ -n "$parent_branch" ]]; then
+        base="$parent_branch"
+      else
+        base="$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)"
+        warn "Stack parent '$stack_parent' has no '$repo' — basing on '$base' instead."
+      fi
+    elif [[ -n "$base_override" ]]; then
       base="$base_override"
     else
       base="$(json_nested "$CONFIG_FILE" repos "$repo" defaultBase)"
@@ -535,17 +557,20 @@ cmd_create() {
   python3 -c "
 import json, sys
 schema_ref = sys.argv[6]
+stack_parent = sys.argv[7]
 manifest = {}
 if schema_ref:
     manifest['\$schema'] = schema_ref
 manifest['id'] = sys.argv[1]
 manifest['created'] = sys.argv[2]
 manifest['description'] = sys.argv[3]
+if stack_parent:
+    manifest['stackParent'] = stack_parent
 manifest['repos'] = json.loads(sys.argv[4])
 with open(sys.argv[5], 'w') as f:
     json.dump(manifest, f, indent=2)
     f.write('\n')
-" "$id" "$(date +%Y-%m-%d)" "$desc" "$manifest_repos" "$ws_path/.becket.json" "$ws_schema_ref"
+" "$id" "$(date +%Y-%m-%d)" "$desc" "$manifest_repos" "$ws_path/.becket.json" "$ws_schema_ref" "$stack_parent"
 
   write_agents_md "$ws_path"
 
@@ -810,6 +835,7 @@ for manifest_path in sorted(glob.glob(os.path.join(workspaces_dir, '*', '.becket
             'description': m.get('description', ''),
             'repos': list(m.get('repos', {}).keys()),
             'status': m.get('status', None),
+            'stackParent': m.get('stackParent', ''),
         })
     except (json.JSONDecodeError, KeyError):
         continue
@@ -866,6 +892,9 @@ print(f\"{'─' * (id_w - 1):<{id_w}} {'─' * (repos_w - 1):<{repos_w}} {'─' 
 for d in data:
     repos_str = ','.join(d['repos'])
     print(f\"{d['id']:<{id_w}} {repos_str:<{repos_w}} {d['created']:<{date_w}} {d['description']}\")
+
+    if d.get('stackParent'):
+        print(f\"  {DIM}↑ stacked on {d['stackParent']}{RESET}\")
 
     status = d.get('status')
     if status and status.get('text'):
@@ -1069,6 +1098,7 @@ ws = {
     'description': m.get('description', ''),
     'created': m.get('created', ''),
     'status': m.get('status', None),
+    'stackParent': m.get('stackParent', ''),
     'repos': json.loads(sys.argv[2]),
 }
 print(json.dumps(ws))
@@ -1131,6 +1161,9 @@ for ws in data:
         title += f\" — {desc}\"
     print()
     print(title)
+
+    if ws.get('stackParent'):
+        print(f\"  {BLUE}Stacked on:{RESET} {ws['stackParent']}\")
 
     status = ws.get('status')
     if status and status.get('text'):
@@ -1693,6 +1726,17 @@ cmd_sync() {
   local manifest="$ws_path/.becket.json"
   [[ -f "$manifest" ]] || die "Workspace '$id' not found."
 
+  # If stacked, point the user at restack instead of silently rebasing onto a
+  # stale base. The base recorded in the manifest is the parent's branch name,
+  # which is correct, but sync's "fetch origin <base>" semantics assume the
+  # base lives on origin — and the parent's branch may have been force-pushed.
+  local stack_parent
+  stack_parent="$(json_nested_safe "$manifest" stackParent 2>/dev/null || true)"
+  if [[ -n "$stack_parent" ]]; then
+    warn "Workspace '$id' is stacked on '$stack_parent'. Use ${BOLD}becket restack $id${RESET} instead of sync."
+    return 1
+  fi
+
   while IFS= read -r repo; do
     local wt_path="$ws_path/$repo"
     local base
@@ -1704,6 +1748,74 @@ cmd_sync() {
 
   echo ""
   info "Sync complete."
+}
+
+cmd_restack() {
+  load_config
+  local id
+  id="$(require_workspace_id "${1:-}")" || die "Usage: becket restack [id] (or run from inside a workspace)"
+  local ws_path="$WORKSPACES_DIR/$id"
+  local manifest="$ws_path/.becket.json"
+  [[ -f "$manifest" ]] || die "Workspace '$id' not found."
+
+  local stack_parent
+  stack_parent="$(json_nested_safe "$manifest" stackParent 2>/dev/null || true)"
+  [[ -n "$stack_parent" ]] || die "Workspace '$id' has no stackParent. Set it in .becket.json, or recreate with --stacked-on."
+
+  local parent_manifest="$WORKSPACES_DIR/$stack_parent/.becket.json"
+  [[ -f "$parent_manifest" ]] || die "Stack parent '$stack_parent' not found (expected $parent_manifest)."
+
+  info "Restacking ${BOLD}$id${RESET} onto ${BOLD}$stack_parent${RESET}..."
+
+  local any_conflict=false
+  while IFS= read -r repo; do
+    local wt_path="$ws_path/$repo"
+    [[ -d "$wt_path" ]] || { warn "Skipping ${BOLD}$repo${RESET}: worktree missing at $wt_path."; continue; }
+
+    local parent_branch
+    parent_branch="$(json_nested_safe "$parent_manifest" repos "$repo" branch 2>/dev/null || true)"
+    if [[ -z "$parent_branch" ]]; then
+      info "Skipping ${BOLD}$repo${RESET}: parent '$stack_parent' has no worktree for this repo."
+      continue
+    fi
+
+    # Refuse to rebase if dirty
+    if [[ -n "$(git -C "$wt_path" status --porcelain)" ]]; then
+      warn "Skipping ${BOLD}$repo${RESET}: working tree dirty. Commit or stash first."
+      any_conflict=true
+      continue
+    fi
+
+    info "Fetching ${BOLD}$repo${RESET} ← origin/$parent_branch..."
+    git -C "$wt_path" fetch origin "$parent_branch" \
+      || { warn "Fetch failed in ${BOLD}$repo${RESET}."; any_conflict=true; continue; }
+
+    # Update the recorded base in case the parent's branch was renamed since creation.
+    python3 -c "
+import json, sys
+m_path, repo, new_base = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(m_path) as f: m = json.load(f)
+m['repos'][repo]['base'] = new_base
+with open(m_path, 'w') as f:
+    json.dump(m, f, indent=2); f.write('\n')
+" "$manifest" "$repo" "$parent_branch"
+
+    info "Rebasing ${BOLD}$repo${RESET} → origin/$parent_branch..."
+    if ! git -C "$wt_path" rebase "origin/$parent_branch"; then
+      warn "Rebase conflict in ${BOLD}$repo${RESET}:"
+      warn "  cd $wt_path"
+      warn "  # resolve conflicts, then:  git add . && git rebase --continue"
+      warn "  # or to bail:                git rebase --abort"
+      any_conflict=true
+    fi
+  done < <(json_keys "$manifest" repos)
+
+  echo ""
+  if [[ "$any_conflict" == true ]]; then
+    warn "Restack finished with issues — see warnings above."
+    return 1
+  fi
+  info "Restack complete. If branches are already on origin, push with: ${BOLD}git push --force-with-lease${RESET}"
 }
 
 cmd_push() {
@@ -1857,6 +1969,7 @@ ${BOLD}WORKSPACE — SYNC & SHIP${RESET}
   desc [id] <text>              Set workspace description
   log [id]                      Show commits across all repos since branching
   sync [id]                     Rebase all repos against their base branch
+  restack [id]                  Rebase a stacked workspace onto its parent's current tips
   push [id]                     Push all repo branches to origin
   pr [id]                       Open GitHub PRs for all repos (requires gh)
 
@@ -1864,6 +1977,7 @@ ${BOLD}CREATE OPTIONS${RESET}
   --desc TEXT                   Description (appended to branch name)
   --repos r1,r2                 Repos to include (default: interactive)
   --base BRANCH                 Override base branch for all repos
+  --stacked-on PARENT_ID        Stack this workspace on another (parent's branches become the base)
   --setup                       Run setup commands after creating workspace
 
 ${BOLD}ADOPT OPTIONS${RESET}
@@ -1918,6 +2032,7 @@ main() {
     shell)      cmd_shell "$@" ;;
     shell-init) cmd_shell_init "$@" ;;
     sync)     cmd_sync "$@" ;;
+    restack)  cmd_restack "$@" ;;
     push)     cmd_push "$@" ;;
     pr)       cmd_pr "$@" ;;
     log)      cmd_log "$@" ;;

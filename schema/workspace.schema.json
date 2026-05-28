@@ -22,6 +22,10 @@
       "type": "string",
       "description": "Optional workspace description."
     },
+    "stackParent": {
+      "type": "string",
+      "description": "Workspace ID this workspace is stacked on. When set, this workspace's branches are based on the parent's branches (not main), and 'becket restack' rebases this workspace's branches onto the parent's current branch tips."
+    },
     "status": {
       "type": "object",
       "description": "Current workspace status, settable by humans or agents.",

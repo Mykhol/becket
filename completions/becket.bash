@@ -50,7 +50,7 @@ _becket() {
 
   # First argument: command
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "init create list status teardown add setup dev shell shell-init sync push pr log stats upgrade help version" -- "$cur") )
+    COMPREPLY=( $(compgen -W "init create list status teardown add setup dev shell shell-init sync restack push pr log stats upgrade help version" -- "$cur") )
     return
   fi
 
@@ -60,10 +60,11 @@ _becket() {
       case "$prev" in
         --desc|--base)  return ;;
         --repos)        COMPREPLY=( $(compgen -W "$(__becket_repo_names)" -- "$cur") ); return ;;
+        --stacked-on)   COMPREPLY=( $(compgen -W "$(__becket_workspace_ids)" -- "$cur") ); return ;;
       esac
-      COMPREPLY=( $(compgen -W "--desc --repos --base --setup" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--desc --repos --base --stacked-on --setup" -- "$cur") )
       ;;
-    status|setup|dev|shell|sync|push|pr|log)
+    status|setup|dev|shell|sync|restack|push|pr|log)
       if [[ $COMP_CWORD -eq 2 ]]; then
         COMPREPLY=( $(compgen -W "$(__becket_workspace_ids)" -- "$cur") )
       fi
