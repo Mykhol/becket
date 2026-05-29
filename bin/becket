@@ -1429,9 +1429,16 @@ print(' && '.join(parts) + ' && ' if parts else '')
 }
 
 cmd_dev() {
-  local id="${1:-}"
+  local id="" detach=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -d|--detach) detach=true; shift ;;
+      -*)          die "Unknown option: $1 (Usage: becket dev [id] [--detach])" ;;
+      *)           id="$1"; shift ;;
+    esac
+  done
   if [[ -z "$id" ]]; then
-    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket dev [id] (or run from inside a workspace)"
+    id="$(detect_workspace_id 2>/dev/null)" || die "Usage: becket dev [id] [--detach] (or run from inside a workspace)"
   fi
 
   load_config
@@ -1514,9 +1521,24 @@ for repo_name in repos:
     info "  ${BOLD}$repo${RESET} → ${DIM}$dev_cmd${RESET}"
   done <<< "$dev_entries"
 
-  # Select first window and attach
   tmux select-window -t "$session:$first_repo"
-  tmux attach-session -t "$session"
+
+  # Auto-detach when there's no controlling terminal (e.g. running under an
+  # agent like Claude Code), since 'tmux attach' requires a TTY.
+  if [[ "$detach" != true && ! -t 1 ]]; then
+    detach=true
+    info "No TTY detected — leaving session detached."
+  fi
+
+  if [[ "$detach" == true ]]; then
+    echo ""
+    info "Dev session ${BOLD}$session${RESET} started (detached)."
+    info "  Attach:   ${DIM}tmux attach -t $session${RESET}"
+    info "  Logs:     ${DIM}tmux capture-pane -pt $session:<repo>${RESET}"
+    info "  Stop:     ${DIM}tmux kill-session -t $session${RESET}"
+  else
+    tmux attach-session -t "$session"
+  fi
 }
 
 cmd_upgrade() {
@@ -1959,7 +1981,8 @@ ${BOLD}WORKSPACE${RESET}
 ${BOLD}WORKSPACE — DEVELOP${RESET}
   shell [id]                    Print workspace directory path (use with shell-init)
   shell-init                    Output shell wrapper for eval (enables 'becket shell' as cd)
-  dev [id]                      Start dev environment (docker + tmux)
+  dev [id] [--detach]           Start dev environment (docker + tmux)
+                                --detach: don't attach (auto when no TTY, e.g. agents)
   setup [id]                    Run setup commands for workspace repos
 
 ${BOLD}WORKSPACE — SYNC & SHIP${RESET}
