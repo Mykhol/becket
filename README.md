@@ -9,7 +9,7 @@ Cross-repo worktree CLI. Create feature-scoped workspaces containing coordinated
 make install   # copies to ~/.local/bin/becket
 
 # Initialize in your platform directory (where your repos live)
-cd ~/Developer/Example/Platform
+cd ~/Developer/Platform
 becket init
 
 # Create a feature workspace
