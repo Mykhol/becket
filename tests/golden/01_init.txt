@@ -1,0 +1,45 @@
+### init in a directory with no git repos
+
+$ becket init
+[exit 1]
+--- stdout ---
+▸ Scanning for git repos in <SANDBOX>/platform...
+--- stderr ---
+error: No git repos found in current directory.
+
+# settings.json
+(absent)
+
+### init discovers sibling git repos and records their default base
+
+$ becket init
+[exit 0]
+--- stdout ---
+▸ Scanning for git repos in <SANDBOX>/platform...
+▸ Found repo: service-admin (base: main)
+▸ Found repo: service (base: main)
+▸ Created <SANDBOX>/platform/.becket/settings.json
+
+# settings.json
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "service-admin": {
+      "path": "./service-admin",
+      "defaultBase": "main"
+    },
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}
+
+
+### init refuses to clobber an existing config
+
+$ becket init
+[exit 1]
+--- stderr ---
+error: .becket/settings.json already exists in this directory.

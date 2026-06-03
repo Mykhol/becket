@@ -1,0 +1,140 @@
+### create the base workspace and push it so its branch exists on origin
+
+$ becket create base-feature --desc base --repos service
+[exit 1]
+--- stdout ---
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/base-feature
+▸ Creating worktree: service → feature/base-feature-base (base: main)
+HEAD is now at <SHA> init service
+--- stderr ---
+Preparing worktree (new branch 'feature/base-feature-base')
+<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
+
+$ becket push base-feature
+[exit 0]
+--- stdout ---
+▸ Pushing service → origin/feature/base-feature-base...
+branch 'feature/base-feature-base' set up to track 'origin/feature/base-feature-base'.
+
+▸ Push complete.
+--- stderr ---
+To <SANDBOX>/origins/service.git
+ * [new branch]      feature/base-feature-base -> feature/base-feature-base
+
+### create a workspace stacked on top of it
+
+$ becket create stacked-feature --stacked-on base-feature --repos service
+[exit 1]
+--- stdout ---
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/stacked-feature
+▸ Creating worktree: service → feature/stacked-feature (base: feature/base-feature-base)
+HEAD is now at <SHA> init service
+--- stderr ---
+Preparing worktree (new branch 'feature/stacked-feature')
+<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
+
+# manifest: base-feature
+{
+  "$schema": "./workspace.schema.json",
+  "id": "base-feature",
+  "created": "<DATE>",
+  "description": "base",
+  "repos": {
+    "service": {
+      "branch": "feature/base-feature-base",
+      "base": "main"
+    }
+  }
+}
+
+
+# manifest: stacked-feature
+{
+  "$schema": "./workspace.schema.json",
+  "id": "stacked-feature",
+  "created": "<DATE>",
+  "description": "",
+  "stackParent": "base-feature",
+  "repos": {
+    "service": {
+      "branch": "feature/stacked-feature",
+      "base": "feature/base-feature-base"
+    }
+  }
+}
+
+
+# branches: service
+feature/base-feature-base
+feature/stacked-feature
+main
+
+### --stacked-on cannot be combined with --base
+
+$ becket create bad-stack --stacked-on base-feature --base main --repos service
+[exit 1]
+--- stderr ---
+error: Cannot combine --base with --stacked-on (the parent's branches are the base).
+
+### list and status reflect the stack relationship
+
+$ becket list
+[exit 0]
+--- stdout ---
+
+ID                REPOS    CREATED      DESCRIPTION
+────────────────  ───────  ──────────   ──────────────────────────────
+base-feature      service   <DATE>   base
+stacked-feature   service   <DATE>   
+  ↑ stacked on base-feature
+
+
+$ becket status stacked-feature
+[exit 0]
+--- stdout ---
+
+Workspace: stacked-feature
+  Stacked on: base-feature
+
+  REPO     BRANCH                    STATUS     AHEAD/BEHIND   LAST COMMIT
+  ───────  ────────────────────────  ────────   ────────────   ───────────
+  service   feature/stacked-feature   clean      +0 / -0        <RELTIME>
+
+
+### restack the child onto the parent's branch
+
+$ becket restack stacked-feature
+[exit 0]
+--- stdout ---
+▸ Restacking stacked-feature onto base-feature...
+▸ Fetching service ← origin/feature/base-feature-base...
+▸ Rebasing service → origin/feature/base-feature-base...
+Current branch feature/stacked-feature is up to date.
+
+▸ Restack complete. If branches are already on origin, push with: git push --force-with-lease
+--- stderr ---
+From <SANDBOX>/origins/service
+ * branch            feature/base-feature-base -> FETCH_HEAD
+
+# manifest: stacked-feature
+{
+  "$schema": "./workspace.schema.json",
+  "id": "stacked-feature",
+  "created": "<DATE>",
+  "description": "",
+  "stackParent": "base-feature",
+  "repos": {
+    "service": {
+      "branch": "feature/stacked-feature",
+      "base": "feature/base-feature-base"
+    }
+  }
+}
+
+
+### restack refuses a workspace that isn't stacked
+
+$ becket restack base-feature
+[exit 1]
+--- stderr ---
+error: Workspace 'base-feature' has no stackParent. Set it in .becket.json, or recreate with --stacked-on.

@@ -1,0 +1,50 @@
+### adopt stashes the dirty change and restores it in the worktree
+
+$ becket adopt rescued --repos service
+[exit 1]
+--- stdout ---
+▸ Detected service on branch feature/wip
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Stashing uncommitted changes in service...
+Saved working directory and index state On feature/wip: becket adopt rescued
+▸ Switching service main dir → main...
+Your branch is up to date with 'origin/main'.
+▸ Creating worktree: service → feature/wip
+HEAD is now at <SHA> wip: start
+▸ Restoring stashed changes into workspace service...
+On branch feature/wip
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   README.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (<SHA>)
+--- stderr ---
+Switched to branch 'main'
+Preparing worktree (checking out 'feature/wip')
+<SANDBOX>/opt/bin/becket: line 608: files[@]: unbound variable
+
+# manifest: rescued
+{
+  "$schema": "./workspace.schema.json",
+  "id": "rescued",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/wip",
+      "base": "main"
+    }
+  }
+}
+
+
+# worktrees: service
+<SANDBOX>/platform/.becket/workspaces/rescued/service  <SHA> [feature/wip]
+<SANDBOX>/platform/service                             <SHA> [main]
+
+### the uncommitted change was restored into the worktree
+
+# worktree status: rescued/service
+ M README.md

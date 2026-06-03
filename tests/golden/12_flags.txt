@@ -1,0 +1,70 @@
+### create --base overrides the base branch the worktree is cut from
+
+$ becket create feat --repos service --base develop
+[exit 1]
+--- stdout ---
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
+▸ Creating worktree: service → feature/feat (base: develop)
+HEAD is now at <SHA> init service
+--- stderr ---
+Preparing worktree (new branch 'feature/feat')
+<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
+
+# manifest: feat
+{
+  "$schema": "./workspace.schema.json",
+  "id": "feat",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/feat",
+      "base": "develop"
+    }
+  }
+}
+
+
+### teardown without --delete-branches removes the worktree but keeps the branch
+
+$ becket teardown feat
+[exit 0]
+--- stdout ---
+▸ Removing worktree: service
+▸ Removed workspace: feat
+
+# branches: service
+develop
+feature/feat
+main
+
+# workspaces tree
+
+### add with the workspace id detected from the current directory (single-arg form)
+
+$ becket add service-admin
+[exit 0]
+--- stdout ---
+▸ Creating worktree: service-admin → feature/multi (base: main)
+HEAD is now at <SHA> init service-admin
+▸ Added service-admin to workspace multi
+--- stderr ---
+Preparing worktree (new branch 'feature/multi')
+
+# manifest: multi
+{
+  "$schema": "./workspace.schema.json",
+  "id": "multi",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/multi",
+      "base": "main"
+    },
+    "service-admin": {
+      "branch": "feature/multi",
+      "base": "main"
+    }
+  }
+}

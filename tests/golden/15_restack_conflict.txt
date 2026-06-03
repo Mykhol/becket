@@ -1,0 +1,26 @@
+### restack reports the rebase conflict and how to resolve it
+
+$ becket restack child
+[exit 1]
+--- stdout ---
+▸ Restacking child onto parent...
+▸ Fetching service ← origin/feature/parent...
+▸ Rebasing service → origin/feature/parent...
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+▸ Rebase conflict in service:
+▸   cd <SANDBOX>/platform/.becket/workspaces/child/service
+▸   # resolve conflicts, then:  git add . && git rebase --continue
+▸   # or to bail:                git rebase --abort
+
+▸ Restack finished with issues — see warnings above.
+--- stderr ---
+From <SANDBOX>/origins/service
+ * branch            feature/parent -> FETCH_HEAD
+Rebasing (1/1)error: could not apply <SHA>... child: B
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply <SHA>... # child: B

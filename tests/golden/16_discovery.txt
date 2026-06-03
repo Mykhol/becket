@@ -1,0 +1,25 @@
+### init records each repo's actual default base (main vs master)
+
+$ becket init
+[exit 0]
+--- stdout ---
+▸ Scanning for git repos in <SANDBOX>/platform...
+▸ Found repo: legacy (base: master)
+▸ Found repo: modern (base: main)
+▸ Created <SANDBOX>/platform/.becket/settings.json
+
+# settings.json
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "legacy": {
+      "path": "./legacy",
+      "defaultBase": "master"
+    },
+    "modern": {
+      "path": "./modern",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}

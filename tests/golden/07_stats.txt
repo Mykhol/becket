@@ -1,0 +1,19 @@
+### stats summarizes command counts, workspaces, and platforms
+
+$ becket stats
+[exit 0]
+--- stdout ---
+Total commands run: 5
+
+Command usage:
+  init                1  █
+  create              1  █
+  status              1  █
+  list                1  █
+  stats               1  █
+
+Most active workspaces:
+  ws                            3
+
+Platforms:
+  platform                      4
