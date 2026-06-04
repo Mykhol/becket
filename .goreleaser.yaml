@@ -53,15 +53,25 @@ release:
   # idempotent instead of failing with "asset already_exists".
   mode: replace
 
-# Homebrew tap (deferred): uncomment once the public tap repo exists and a
-# cross-repo token (HOMEBREW_TAP_GITHUB_TOKEN) is configured.
-# brews:
-#   - repository:
-#       owner: Mykhol
-#       name: homebrew-tap
-#     homepage: "https://github.com/Mykhol/becket"
-#     description: "Cross-repo git-worktree workspaces"
-#     install: |
-#       bin.install "becket"
-#       bash_completion.install "completions/becket.bash" => "becket"
-#       zsh_completion.install "completions/_becket"
+# Homebrew tap: publishes Formula/becket.rb to Mykhol/homebrew-tap on release.
+# Requires a cross-repo token (the default GITHUB_TOKEN can't push to another
+# repo) provided as the HOMEBREW_TAP_TOKEN secret/env in the release workflow.
+homebrew_casks:
+  - name: becket
+    repository:
+      owner: Mykhol
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/Mykhol/becket"
+    description: "Cross-repo git-worktree workspaces"
+    binaries:
+      - becket
+    # becket is unsigned; strip the Gatekeeper quarantine bit so it runs after
+    # `brew install` without "developer cannot be verified". (Completions are
+    # available via `becket completion` / `becket shell-init`.)
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/becket"]
+          end

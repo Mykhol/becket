@@ -26,3 +26,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Cross-repo token (contents:write on Mykhol/homebrew-tap) so GoReleaser
+          # can publish the Homebrew formula. Set via: gh secret set HOMEBREW_TAP_TOKEN
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
