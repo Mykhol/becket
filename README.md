@@ -129,6 +129,20 @@ Optional keys add per-repo `setup`/`dev`/`env` commands (for `becket setup` and
 
 Run `becket <command> --help` for full flag details.
 
+## Agent skill
+
+becket ships an [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
+(`skills/becket/SKILL.md`) so coding agents know how to drive it. Install it with
+[`skills`](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add Mykhol/becket            # into the current project
+npx skills add Mykhol/becket --global   # for all projects
+```
+
+Or copy `skills/becket/SKILL.md` into `~/.claude/skills/becket/` (personal) or
+`.claude/skills/becket/` (project) by hand.
+
 ## Development
 
 ```bash
