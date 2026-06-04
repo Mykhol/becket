@@ -1,0 +1,131 @@
+# Untested flags/branches on already-covered commands:
+#   create --base, teardown (keep branches), add (id detected from CWD).
+# Ported from tests/scenarios/12_flags.sh + tests/golden/12_flags.txt.
+#
+# Setup mirrors harness.sh setup_platform: build two repos (admin, service; each
+# a clone of a bare origin with one seeded commit on main) and run `becket init`
+# quietly. An extra `develop` branch is added to service so `--base develop` has
+# something other than main to cut from.
+#
+# State is inspected with `exec git` (branches; git's default --format ordering
+# is alphabetical, matching the bash harness's `| sort`) and `exists` checks
+# (the workspaces tree, which the bash golden renders empty after teardown).
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# mk_repo admin
+exec git init --bare origins/admin.git
+exec git clone origins/admin.git platform/admin
+cp readme platform/admin/README.md
+exec git -C platform/admin add README.md
+exec git -C platform/admin commit -m 'init admin'
+exec git -C platform/admin push -u origin main
+
+cd platform
+exec becket init
+
+# an alternate base branch to target
+exec git -C $WORK/platform/service branch develop
+
+# ── create --base overrides the base branch the worktree is cut from ────────────
+exec becket create feat --repos service --base develop
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-base.stdout
+cmp err $WORK/create-base.stderr
+
+sanitize $WORK/platform/.becket/workspaces/feat/.becket.json
+cmp $WORK/platform/.becket/workspaces/feat/.becket.json $WORK/manifest-feat.json
+
+# ── teardown without --delete-branches removes the worktree but keeps the branch ─
+exec becket teardown feat
+cp stdout out
+sanitize out
+cmp out $WORK/teardown.stdout
+
+# branches: service (git's default --format ordering is alphabetical = sorted)
+exec git -C $WORK/platform/service branch --format='%(refname:short)'
+cp stdout out
+sanitize out
+cmp out $WORK/branches-service.txt
+
+# workspaces tree is empty after teardown (the only workspace is gone)
+! exists $WORK/platform/.becket/workspaces/feat
+exists $WORK/platform/.becket/workspaces
+
+# ── add with the workspace id detected from the current directory (single-arg) ──
+exec becket create multi --repos service
+cd $WORK/platform/.becket/workspaces/multi/service
+exec becket add admin
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/add-admin.stdout
+cmp err $WORK/add-admin.stderr
+
+sanitize $WORK/platform/.becket/workspaces/multi/.becket.json
+cmp $WORK/platform/.becket/workspaces/multi/.becket.json $WORK/manifest-multi.json
+
+-- readme --
+# repo
+-- create-base.stdout --
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
+▸ Creating worktree: service → feature/feat (base: develop)
+HEAD is now at <SHA> init service
+
+▸ Workspace feat ready at <SANDBOX>/platform/.becket/workspaces/feat
+▸ Branch: feature/feat
+-- create-base.stderr --
+Preparing worktree (new branch 'feature/feat')
+-- manifest-feat.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "feat",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/feat",
+      "base": "develop"
+    }
+  }
+}
+-- teardown.stdout --
+▸ Removing worktree: service
+▸ Removed workspace: feat
+-- branches-service.txt --
+develop
+feature/feat
+main
+-- add-admin.stdout --
+▸ Creating worktree: admin → feature/multi (base: main)
+HEAD is now at <SHA> init admin
+▸ Added admin to workspace multi
+-- add-admin.stderr --
+Preparing worktree (new branch 'feature/multi')
+-- manifest-multi.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "multi",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/multi",
+      "base": "main"
+    },
+    "admin": {
+      "branch": "feature/multi",
+      "base": "main"
+    }
+  }
+}

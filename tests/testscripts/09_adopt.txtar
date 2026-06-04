@@ -1,0 +1,98 @@
+# becket adopt — wrap an already-existing branch into a workspace (vs. create,
+# which makes a fresh branch). Detects the repo's current branch; refuses if the
+# repo is sitting on its base branch.
+# Ported from tests/scenarios/09_adopt.sh + tests/golden/09_adopt.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh.
+# Branch / worktree state is inspected with `exec git` in git's own (deterministic)
+# ordering — the main worktree lists first — and compared after sanitizing, rather
+# than re-sorting as the bash harness did.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# ── adopt refuses a repo that is on its base branch (nothing to adopt) ───────────
+! exec becket adopt nope --repos service
+cp stderr err
+sanitize err
+cmp err $WORK/adopt-nope.stderr
+
+# ── adopt the repo's current feature branch into a new workspace ─────────────────
+# Simulate pre-existing work: a feature branch with a commit, left checked out.
+exec git -C $WORK/platform/service checkout -b feature/existing-work
+cp $WORK/existing $WORK/platform/service/EXISTING.md
+exec git -C $WORK/platform/service add EXISTING.md
+exec git -C $WORK/platform/service commit -m 'wip: pre-existing work'
+
+exec becket adopt rescued --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/adopt.stdout
+cmp err $WORK/adopt.stderr
+
+# manifest: rescued
+sanitize $WORK/platform/.becket/workspaces/rescued/.becket.json
+cmp $WORK/platform/.becket/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
+
+# branches: service (git's deterministic ordering)
+exec git -C $WORK/platform/service branch --format='%(refname:short)'
+cp stdout out
+sanitize out
+cmp out $WORK/branches-service.txt
+
+# worktrees: service (main worktree first; -squeeze collapses column padding)
+exec git -C $WORK/platform/service worktree list
+cp stdout out
+sanitize -squeeze out
+cmp out $WORK/worktrees-service.txt
+
+-- readme --
+# repo
+-- existing --
+pre-existing
+-- adopt-nope.stderr --
+error: Repo 'service' is already on base branch 'main'. Nothing to adopt.
+-- adopt.stdout --
+▸ Detected service on branch feature/existing-work
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Switching service main dir → main...
+Your branch is up to date with 'origin/main'.
+▸ Creating worktree: service → feature/existing-work
+HEAD is now at <SHA> wip: pre-existing work
+
+▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Adopted branches:
+▸   service → feature/existing-work
+-- adopt.stderr --
+Switched to branch 'main'
+Preparing worktree (checking out 'feature/existing-work')
+-- manifest-rescued.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "rescued",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/existing-work",
+      "base": "main"
+    }
+  }
+}
+-- branches-service.txt --
+feature/existing-work
+main
+-- worktrees-service.txt --
+<SANDBOX>/platform/service <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/existing-work]

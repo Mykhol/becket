@@ -1,0 +1,80 @@
+# becket push (push feature branches to origin) and becket log (commits on the
+# feature branch since base). Both run fully offline against the bare origin.
+# Ported from tests/scenarios/06_push_log.sh + tests/golden/06_push_log.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh:
+# the repo is a clone of a local bare origin with one seeded commit on main.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# create the workspace (output not part of this scenario's transcript)
+exec becket create ws --repos service
+
+# Put one commit on the feature branch so log has something to show.
+cp $WORK/feature $WORK/platform/.becket/workspaces/ws/service/FEATURE.md
+exec git -C $WORK/platform/.becket/workspaces/ws/service add FEATURE.md
+exec git -C $WORK/platform/.becket/workspaces/ws/service commit -m 'feat: add FEATURE.md'
+
+# ── log shows commits on the feature branch ahead of base ───────────────────────
+exec becket log ws
+cp stdout out
+sanitize out
+cmp out $WORK/log-1.stdout
+
+# ── push the feature branch to origin ───────────────────────────────────────────
+exec becket push ws
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/push.stdout
+cmp err $WORK/push.stderr
+
+exec git -C $WORK/platform/service branch --format='%(refname:short)'
+cp stdout out
+sanitize out
+cmp out $WORK/branches-service.txt
+
+# ── log still works after the branch exists on origin ───────────────────────────
+exec becket log ws
+cp stdout out
+sanitize out
+cmp out $WORK/log-2.stdout
+
+-- readme --
+# repo
+-- feature --
+feature work
+-- log-1.stdout --
+
+service  feature/ws
+──────────────────────────────────────────────────
+* <SHA> feat: add FEATURE.md
+
+-- push.stdout --
+▸ Pushing service → origin/feature/ws...
+branch 'feature/ws' set up to track 'origin/feature/ws'.
+
+▸ Push complete.
+-- push.stderr --
+To <SANDBOX>/origins/service.git
+ * [new branch]      feature/ws -> feature/ws
+-- branches-service.txt --
+feature/ws
+main
+-- log-2.stdout --
+
+service  feature/ws
+──────────────────────────────────────────────────
+* <SHA> feat: add FEATURE.md
+

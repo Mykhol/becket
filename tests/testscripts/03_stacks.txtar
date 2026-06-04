@@ -1,0 +1,188 @@
+# Stacked workspaces: --stacked-on, stack-aware list/status, and restack.
+# Ported from tests/scenarios/03_stacks.sh + tests/golden/03_stacks.txt.
+#
+# Restack fetches/rebases onto origin/<parent-branch>, so the parent must be
+# pushed to its (local, bare) origin first. Setup mirrors harness.sh
+# setup_platform service: one repo (a clone of a bare origin with one seeded
+# commit on main) plus a quiet `becket init`.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# ── create the base workspace and push it so its branch exists on origin ────────
+exec becket create base-feature --desc base --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-base.stdout
+cmp err $WORK/create-base.stderr
+
+exec becket push base-feature
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/push-base.stdout
+cmp err $WORK/push-base.stderr
+
+# ── create a workspace stacked on top of it ─────────────────────────────────────
+exec becket create stacked-feature --stacked-on base-feature --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-stacked.stdout
+cmp err $WORK/create-stacked.stderr
+
+# manifest: base-feature (copy to a scratch file first so the live manifest
+# keeps its real date — a later restack re-serializes it and would HTML-escape
+# an already-sanitized "<DATE>" into "<DATE>").
+cp $WORK/platform/.becket/workspaces/base-feature/.becket.json mbase
+sanitize mbase
+cmp mbase $WORK/manifest-base.json
+
+# manifest: stacked-feature
+cp $WORK/platform/.becket/workspaces/stacked-feature/.becket.json mstacked
+sanitize mstacked
+cmp mstacked $WORK/manifest-stacked.json
+
+# branches: service (git emits these alphabetically)
+exec git -C $WORK/platform/service branch --format='%(refname:short)'
+cp stdout out
+sanitize out
+cmp out $WORK/branches-service.txt
+
+# ── --stacked-on cannot be combined with --base ─────────────────────────────────
+! exec becket create bad-stack --stacked-on base-feature --base main --repos service
+cp stderr err
+sanitize err
+cmp err $WORK/bad-stack.stderr
+
+# ── list and status reflect the stack relationship ──────────────────────────────
+exec becket list
+cp stdout out
+sanitize out
+cmp out $WORK/list.stdout
+
+exec becket status stacked-feature
+cp stdout out
+sanitize out
+cmp out $WORK/status-stacked.stdout
+
+# ── restack the child onto the parent's branch ──────────────────────────────────
+exec becket restack stacked-feature
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/restack.stdout
+cmp err $WORK/restack.stderr
+
+# manifest unchanged by restack (still scratch-copied before sanitizing)
+cp $WORK/platform/.becket/workspaces/stacked-feature/.becket.json mstacked2
+sanitize mstacked2
+cmp mstacked2 $WORK/manifest-stacked.json
+
+# ── restack refuses a workspace that isn't stacked ──────────────────────────────
+! exec becket restack base-feature
+cp stderr err
+sanitize err
+cmp err $WORK/restack-unstacked.stderr
+
+-- readme --
+# repo
+-- create-base.stdout --
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/base-feature
+▸ Creating worktree: service → feature/base-feature-base (base: main)
+HEAD is now at <SHA> init service
+
+▸ Workspace base-feature ready at <SANDBOX>/platform/.becket/workspaces/base-feature
+▸ Branch: feature/base-feature-base
+-- create-base.stderr --
+Preparing worktree (new branch 'feature/base-feature-base')
+-- push-base.stdout --
+▸ Pushing service → origin/feature/base-feature-base...
+branch 'feature/base-feature-base' set up to track 'origin/feature/base-feature-base'.
+
+▸ Push complete.
+-- push-base.stderr --
+To <SANDBOX>/origins/service.git
+ * [new branch]      feature/base-feature-base -> feature/base-feature-base
+-- create-stacked.stdout --
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/stacked-feature
+▸ Creating worktree: service → feature/stacked-feature (base: feature/base-feature-base)
+HEAD is now at <SHA> init service
+
+▸ Workspace stacked-feature ready at <SANDBOX>/platform/.becket/workspaces/stacked-feature
+▸ Branch: feature/stacked-feature
+-- create-stacked.stderr --
+Preparing worktree (new branch 'feature/stacked-feature')
+-- manifest-base.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "base-feature",
+  "created": "<DATE>",
+  "description": "base",
+  "repos": {
+    "service": {
+      "branch": "feature/base-feature-base",
+      "base": "main"
+    }
+  }
+}
+-- manifest-stacked.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "stacked-feature",
+  "created": "<DATE>",
+  "description": "",
+  "stackParent": "base-feature",
+  "repos": {
+    "service": {
+      "branch": "feature/stacked-feature",
+      "base": "feature/base-feature-base"
+    }
+  }
+}
+-- branches-service.txt --
+feature/base-feature-base
+feature/stacked-feature
+main
+-- bad-stack.stderr --
+error: Cannot combine --base with --stacked-on (the parent's branches are the base).
+-- list.stdout --
+
+ID                REPOS     CREATED      DESCRIPTION
+────────────────  ────────  ──────────   ──────────────────────────────
+base-feature      service   <DATE>   base
+stacked-feature   service   <DATE>   
+  ↑ stacked on base-feature
+
+-- status-stacked.stdout --
+
+Workspace: stacked-feature
+  Stacked on: base-feature
+
+  REPO      BRANCH                    STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ────────────────────────  ────────   ────────────   ───────────
+  service   feature/stacked-feature   clean      +0 / -0        <RELTIME>
+
+-- restack.stdout --
+▸ Restacking stacked-feature onto base-feature...
+▸ Fetching service ← origin/feature/base-feature-base...
+▸ Rebasing service → origin/feature/base-feature-base...
+Current branch feature/stacked-feature is up to date.
+
+▸ Restack complete. If branches are already on origin, push with: git push --force-with-lease
+-- restack.stderr --
+From <SANDBOX>/origins/service
+ * branch            feature/base-feature-base -> FETCH_HEAD
+-- restack-unstacked.stderr --
+error: Workspace 'base-feature' has no stackParent. Set it in .becket.json, or recreate with --stacked-on.

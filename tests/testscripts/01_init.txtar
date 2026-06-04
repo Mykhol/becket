@@ -1,0 +1,89 @@
+# becket init — platform bootstrap and repo discovery.
+# Ported from tests/scenarios/01_init.sh + tests/golden/01_init.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh:
+# each repo is a clone of a local bare origin with one seeded commit on main.
+#
+# Golden files live at the txtar archive root ($WORK), so they are referenced
+# as $WORK/<name> regardless of the current directory. Captured output is
+# copied into a scratch file, sanitized in place, then compared.
+
+# ── init in a directory with no git repos ──────────────────────────────────────
+mkdir platform
+cd platform
+! exec becket init
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/init-empty.stdout
+cmp err $WORK/init-empty.stderr
+
+# settings.json must be absent
+! exists $WORK/platform/.becket/settings.json
+
+# ── init discovers sibling git repos and records their default base ─────────────
+# Fresh platform with two repos (both default to main via the fixture).
+cd $WORK
+rm platform
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# mk_repo admin
+exec git init --bare origins/admin.git
+exec git clone origins/admin.git platform/admin
+cp readme platform/admin/README.md
+exec git -C platform/admin add README.md
+exec git -C platform/admin commit -m 'init admin'
+exec git -C platform/admin push -u origin main
+
+cd platform
+exec becket init
+cp stdout out
+sanitize out
+cmp out $WORK/init-found.stdout
+
+# settings.json now exists; compare its content
+sanitize $WORK/platform/.becket/settings.json
+cmp $WORK/platform/.becket/settings.json $WORK/settings.json
+
+# ── init refuses to clobber an existing config ──────────────────────────────────
+! exec becket init
+cp stderr err
+sanitize err
+cmp err $WORK/init-clobber.stderr
+
+-- readme --
+# repo
+-- init-empty.stdout --
+▸ Scanning for git repos in <SANDBOX>/platform...
+-- init-empty.stderr --
+error: No git repos found in current directory.
+-- init-found.stdout --
+▸ Scanning for git repos in <SANDBOX>/platform...
+▸ Found repo: admin (base: main)
+▸ Found repo: service (base: main)
+▸ Created <SANDBOX>/platform/.becket/settings.json
+-- settings.json --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "admin": {
+      "path": "./admin",
+      "defaultBase": "main"
+    },
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}
+-- init-clobber.stderr --
+error: .becket/settings.json already exists in this directory.

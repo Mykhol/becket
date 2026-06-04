@@ -1,0 +1,86 @@
+# `becket sync` — rebase a workspace's branches onto origin/<base>, and its
+# refusal to touch a stacked workspace (which must use restack instead).
+# Ported from tests/scenarios/05_sync.sh + tests/golden/05_sync.txt.
+#
+# Setup mirrors harness.sh setup_platform service: one repo (a clone of a bare
+# origin with one seeded commit on main) plus a quiet `becket init`. The
+# create-ws / create-child outputs are not part of this transcript (the bash
+# scenario discards them); only the sync behaviour matters.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# ── sync an up-to-date workspace (clean no-op rebase onto origin/main) ───────────
+exec becket create ws --repos service
+
+exec becket sync ws
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/sync-clean.stdout
+cmp err $WORK/sync-clean.stderr
+
+# ── sync picks up new commits on the base branch ────────────────────────────────
+# Advance origin/main by committing in the platform clone and pushing.
+exec git -C $WORK/platform/service checkout main
+cp $WORK/upstream $WORK/platform/service/UPSTREAM.md
+exec git -C $WORK/platform/service add UPSTREAM.md
+exec git -C $WORK/platform/service commit -m 'upstream: add UPSTREAM.md'
+exec git -C $WORK/platform/service push origin main
+
+exec becket sync ws
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/sync-advance.stdout
+cmp err $WORK/sync-advance.stderr
+
+# worktrees: service (-squeeze collapses git's path-dependent column padding)
+exec git -C $WORK/platform/service worktree list
+cp stdout out
+sanitize -squeeze out
+cmp out $WORK/worktrees-service.txt
+
+# ── sync refuses a stacked workspace and points at restack ──────────────────────
+exec becket create child --stacked-on ws --repos service
+
+! exec becket sync child
+cp stdout out
+sanitize out
+cmp out $WORK/sync-child.stdout
+
+-- readme --
+# repo
+-- upstream --
+upstream change
+-- sync-clean.stdout --
+▸ Syncing service ← origin/main...
+Current branch feature/ws is up to date.
+
+▸ Sync complete.
+-- sync-clean.stderr --
+From <SANDBOX>/origins/service
+ * branch            main       -> FETCH_HEAD
+-- sync-advance.stdout --
+▸ Syncing service ← origin/main...
+
+▸ Sync complete.
+-- sync-advance.stderr --
+From <SANDBOX>/origins/service
+ * branch            main       -> FETCH_HEAD
+Successfully rebased and updated refs/heads/feature/ws.
+-- worktrees-service.txt --
+<SANDBOX>/platform/service <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/ws/service <SHA> [feature/ws]
+-- sync-child.stdout --
+▸ Workspace 'child' is stacked on 'ws'. Use becket restack child instead of sync.

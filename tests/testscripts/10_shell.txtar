@@ -1,0 +1,56 @@
+# `becket shell` — print a workspace's directory path (the value `shell-init`'s
+# wrapper cd's into). By id, detected from CWD, and the not-found error.
+# Ported from tests/scenarios/10_shell.sh + tests/golden/10_shell.txt.
+#
+# Setup mirrors harness.sh setup_platform: build one repo (a clone of a bare
+# origin with one seeded commit on main) and run `becket init` quietly. The
+# workspace is then created quietly — only the `shell` transcript matters.
+#
+# The CWD-detection path is exercised by `cd`-ing into the repo's worktree
+# (.becket/workspaces/ws/service, the `wt ws service` helper) before invoking
+# `becket shell`; it still resolves up to the workspace dir.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# create the workspace (output not part of this scenario's transcript)
+exec becket create ws --repos service
+
+# ── shell prints the workspace path (by id) ─────────────────────────────────────
+exec becket shell ws
+cp stdout out
+sanitize out
+cmp out $WORK/shell-id.stdout
+
+# ── shell detects the workspace from the current directory ──────────────────────
+cd $WORK/platform/.becket/workspaces/ws/service
+exec becket shell
+cp stdout out
+sanitize out
+cmp out $WORK/shell-cwd.stdout
+
+# ── shell errors on an unknown workspace ────────────────────────────────────────
+cd $WORK/platform
+! exec becket shell nonexistent
+cp stderr err
+sanitize err
+cmp err $WORK/shell-notfound.stderr
+
+-- readme --
+# repo
+-- shell-id.stdout --
+<SANDBOX>/platform/.becket/workspaces/ws
+-- shell-cwd.stdout --
+<SANDBOX>/platform/.becket/workspaces/ws
+-- shell-notfound.stderr --
+error: Workspace 'nonexistent' not found.

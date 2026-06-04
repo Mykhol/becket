@@ -1,0 +1,81 @@
+# `becket restack` when rebasing the child onto the parent's advanced branch
+# hits a conflict. The parent only ever fast-forwards (no force-push needed).
+# Ported from tests/scenarios/15_restack_conflict.sh + tests/golden/15_restack_conflict.txt.
+#
+# Setup mirrors harness.sh setup_platform service: one repo (a clone of a bare
+# origin with one seeded commit on main) plus a quiet `becket init`. The
+# create/push outputs are not part of this transcript (the bash scenario
+# discards them); only the conflicting restack matters. Like 14_sync_conflict,
+# this stresses normalization: the git rebase failure prints object SHAs (->
+# <SHA>), the origin realpath (-> <SANDBOX>), and conflict hints verbatim.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# Parent: commit A on the same line, publish to origin.
+exec becket create parent --repos service
+cp $WORK/parent-a $WORK/platform/.becket/workspaces/parent/service/README.md
+exec git -C $WORK/platform/.becket/workspaces/parent/service add README.md
+exec git -C $WORK/platform/.becket/workspaces/parent/service commit -m 'parent: A'
+exec becket push parent
+
+# Child stacked on parent (base = A); commit B editing that same line.
+exec becket create child --stacked-on parent --repos service
+cp $WORK/child-b $WORK/platform/.becket/workspaces/child/service/README.md
+exec git -C $WORK/platform/.becket/workspaces/child/service add README.md
+exec git -C $WORK/platform/.becket/workspaces/child/service commit -m 'child: B'
+
+# Parent advances to C on the same line, republished → child's B will conflict.
+cp $WORK/parent-c $WORK/platform/.becket/workspaces/parent/service/README.md
+exec git -C $WORK/platform/.becket/workspaces/parent/service add README.md
+exec git -C $WORK/platform/.becket/workspaces/parent/service commit -m 'parent: C'
+exec becket push parent
+
+# ── restack reports the rebase conflict and how to resolve it ───────────────────
+! exec becket restack child
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/restack.stdout
+cmp err $WORK/restack.stderr
+
+-- readme --
+# repo
+-- parent-a --
+PARENT-A
+-- child-b --
+CHILD-B
+-- parent-c --
+PARENT-C
+-- restack.stdout --
+▸ Restacking child onto parent...
+▸ Fetching service ← origin/feature/parent...
+▸ Rebasing service → origin/feature/parent...
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+▸ Rebase conflict in service:
+▸   cd <SANDBOX>/platform/.becket/workspaces/child/service
+▸   # resolve conflicts, then:  git add . && git rebase --continue
+▸   # or to bail:                git rebase --abort
+
+▸ Restack finished with issues — see warnings above.
+-- restack.stderr --
+From <SANDBOX>/origins/service
+ * branch            feature/parent -> FETCH_HEAD
+Rebasing (1/1)error: could not apply <SHA>... child: B
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply <SHA>... # child: B

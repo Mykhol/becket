@@ -1,0 +1,99 @@
+# becket upgrade — migrate an older config/manifest forward: add the $schema
+# reference and fill in default keys, idempotently.
+# Ported from tests/scenarios/08_upgrade.sh + tests/golden/08_upgrade.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh. Note
+# this scenario does NOT run `becket init`: it hand-writes an old-style
+# settings.json (no $schema, no branchPrefix) to characterize the migration.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# an old-style settings.json: no $schema, no branchPrefix
+mkdir platform/.becket
+cp $WORK/settings-old $WORK/platform/.becket/settings.json
+cmp $WORK/platform/.becket/settings.json $WORK/settings-before.json
+
+cd platform
+
+# ── upgrade adds the schema reference and default keys ───────────────────────────
+exec becket upgrade
+cp stdout out
+sanitize out
+cmp out $WORK/upgrade-1.stdout
+
+cmp $WORK/platform/.becket/settings.json $WORK/settings-after.json
+
+# ── upgrade is idempotent and also visits workspace manifests ────────────────────
+exec becket create ws --repos service
+
+exec becket upgrade
+cp stdout out
+sanitize out
+cmp out $WORK/upgrade-2.stdout
+
+# manifest: ws
+sanitize $WORK/platform/.becket/workspaces/ws/.becket.json
+cmp $WORK/platform/.becket/workspaces/ws/.becket.json $WORK/manifest-ws.json
+
+-- readme --
+# repo
+-- settings-old --
+{
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  }
+}
+-- settings-before.json --
+{
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  }
+}
+-- upgrade-1.stdout --
+▸ Config may be outdated. Run becket upgrade to update.
+▸ Updated settings.json
+
+▸ Upgrade complete.
+-- settings-after.json --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}
+-- upgrade-2.stdout --
+▸ settings.json is already current.
+▸ Workspace ws is already current.
+
+▸ Upgrade complete.
+-- manifest-ws.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/ws",
+      "base": "main"
+    }
+  }
+}

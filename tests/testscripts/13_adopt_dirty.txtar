@@ -1,0 +1,103 @@
+# becket adopt against a DIRTY repo: it auto-stashes uncommitted changes and
+# restores them into the new worktree.
+# Ported from tests/scenarios/13_adopt_dirty.sh + tests/golden/13_adopt_dirty.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh. The
+# pre-existing work is a feature branch with a committed file plus an uncommitted
+# tracked edit (an extra line appended to README.md, staged by nothing).
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# Pre-existing work on a feature branch, with an uncommitted tracked change.
+exec git -C $WORK/platform/service checkout -b feature/wip
+cp $WORK/wip $WORK/platform/service/WIP.md
+exec git -C $WORK/platform/service add WIP.md
+exec git -C $WORK/platform/service commit -m 'wip: start'
+# dirty, not committed: append a line to the tracked README.md
+cp $WORK/readme-dirty $WORK/platform/service/README.md
+
+# ── adopt stashes the dirty change and restores it in the worktree ───────────────
+exec becket adopt rescued --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/adopt.stdout
+cmp err $WORK/adopt.stderr
+
+# manifest: rescued
+sanitize $WORK/platform/.becket/workspaces/rescued/.becket.json
+cmp $WORK/platform/.becket/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
+
+# worktrees: service (main worktree first; -squeeze collapses column padding)
+exec git -C $WORK/platform/service worktree list
+cp stdout out
+sanitize -squeeze out
+cmp out $WORK/worktrees-service.txt
+
+# ── the uncommitted change was restored into the worktree ────────────────────────
+exec git -C $WORK/platform/.becket/workspaces/rescued/service status --porcelain
+cp stdout out
+sanitize out
+cmp out $WORK/status-porcelain.txt
+
+-- readme --
+# repo
+-- wip --
+work in progress
+-- readme-dirty --
+# repo
+uncommitted edit
+-- adopt.stdout --
+▸ Detected service on branch feature/wip
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Stashing uncommitted changes in service...
+Saved working directory and index state On feature/wip: becket adopt rescued
+▸ Switching service main dir → main...
+Your branch is up to date with 'origin/main'.
+▸ Creating worktree: service → feature/wip
+HEAD is now at <SHA> wip: start
+▸ Restoring stashed changes into workspace service...
+On branch feature/wip
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   README.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (<SHA>)
+
+▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Adopted branches:
+▸   service → feature/wip
+-- adopt.stderr --
+Switched to branch 'main'
+Preparing worktree (checking out 'feature/wip')
+-- manifest-rescued.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "rescued",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/wip",
+      "base": "main"
+    }
+  }
+}
+-- worktrees-service.txt --
+<SANDBOX>/platform/service <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/wip]
+-- status-porcelain.txt --
+ M README.md

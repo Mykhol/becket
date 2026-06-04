@@ -1,0 +1,64 @@
+# `becket init` default-base detection: a repo whose only branch is `master`
+# is recorded with defaultBase "master"; a `main` repo with "main".
+# Ported from tests/scenarios/16_discovery.sh + tests/golden/16_discovery.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh:
+#   - modern : a clone of a bare origin seeded on `main` (mk_repo).
+#   - legacy : a clone of a bare origin whose only branch is `master`
+#              (mk_repo_branch — checkout -b master before the seed commit).
+# becket discovers repos alphabetically (legacy, modern) regardless of build
+# order. Output is captured, sanitized in place, then compared against the
+# in-archive goldens at the txtar root ($WORK).
+
+mkdir platform origins
+
+# mk_repo modern (default branch: main)
+exec git init --bare origins/modern.git
+exec git clone origins/modern.git platform/modern
+cp readme platform/modern/README.md
+exec git -C platform/modern add README.md
+exec git -C platform/modern commit -m 'init modern'
+exec git -C platform/modern push -u origin main
+
+# mk_repo_branch legacy master (only branch is master)
+exec git init --bare origins/legacy.git
+exec git clone origins/legacy.git platform/legacy
+exec git -C platform/legacy checkout -b master
+cp readme platform/legacy/README.md
+exec git -C platform/legacy add README.md
+exec git -C platform/legacy commit -m 'init legacy'
+exec git -C platform/legacy push -u origin master
+
+# ── init records each repo's actual default base (main vs master) ───────────────
+cd platform
+exec becket init
+cp stdout out
+sanitize out
+cmp out $WORK/init.stdout
+
+# settings.json records master for legacy, main for modern
+sanitize $WORK/platform/.becket/settings.json
+cmp $WORK/platform/.becket/settings.json $WORK/settings.json
+
+-- readme --
+# repo
+-- init.stdout --
+▸ Scanning for git repos in <SANDBOX>/platform...
+▸ Found repo: legacy (base: master)
+▸ Found repo: modern (base: main)
+▸ Created <SANDBOX>/platform/.becket/settings.json
+-- settings.json --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "legacy": {
+      "path": "./legacy",
+      "defaultBase": "master"
+    },
+    "modern": {
+      "path": "./modern",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}

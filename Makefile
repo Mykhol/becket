@@ -22,8 +22,9 @@ uninstall:
 	@rm -f $(PREFIX)/share/bash-completion/completions/becket
 	@echo "Removed becket from $(PREFIX)/bin/becket"
 
-# Characterization regression suite against the Go binary (the source of truth).
-test test-go: build
-	@BECKET_BIN=$(PWD)/becket-go ./tests/run.sh
+# Go-native test suite: per-package unit tests plus the testscript (.txtar)
+# end-to-end scenarios under tests/testscripts/ (driven by main_test.go).
+test test-go:
+	@go test ./...
 
 .PHONY: build install uninstall test test-go

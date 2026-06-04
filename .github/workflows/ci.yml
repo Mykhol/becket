@@ -19,7 +19,7 @@ jobs:
 
       - name: gofmt
         run: |
-          unformatted="$(gofmt -l internal main.go)"
+          unformatted="$(gofmt -l internal main.go main_test.go)"
           if [ -n "$unformatted" ]; then echo "needs gofmt:"; echo "$unformatted"; exit 1; fi
 
       - name: go vet
@@ -28,14 +28,10 @@ jobs:
       - name: go build
         run: go build ./...
 
-      # Characterization suite against the Go binary. The two rebase-conflict
-      # scenarios capture git's own message text (version-sensitive), so they're
-      # excluded here and run separately as informational.
-      - name: characterization suite
-        run: make test-go
-        env:
-          BECKET_SKIP: conflict
-
-      - name: conflict scenarios (informational)
-        run: BECKET_BIN="$PWD/becket-go" ./tests/run.sh conflict
-        continue-on-error: true
+      # Go-native test suite: per-package unit tests plus the testscript
+      # (.txtar) end-to-end scenarios under tests/testscripts/, including the
+      # two rebase-conflict scenarios (14, 15). Those capture git's own message
+      # text; if a future git release changes the wording they may need
+      # regenerating with `go test ./... -run TestScripts -update`.
+      - name: go test
+        run: go test ./... -count=1

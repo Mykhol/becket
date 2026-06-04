@@ -1,115 +1,127 @@
-# becket characterization tests
+# becket tests
 
-A black-box **golden-master** suite that locks the *observable* behaviour of
-`becket` — stdout, stderr, exit codes, and the on-disk state each command
-produces. It began as the **migration contract** (prove the Go + Cobra rewrite
-matched the original bash script byte-for-byte); that migration is complete, so
-it now serves as a **regression suite for the Go binary**, which is the source of
-truth.
+becket's test suite is **Go-native**. There are two layers:
+
+1. **Per-package unit tests** (`internal/*/...*_test.go`) — fast, in-process
+   tests of pure helpers and data types (config discovery, git wrappers,
+   deterministic JSON formatting, render helpers, workspace manifests, CLI
+   string utilities).
+2. **End-to-end scenarios** (`tests/testscripts/*.txtar`, driven by
+   `main_test.go`) — black-box, **golden-master** scripts built on
+   [`rogpeppe/go-internal/testscript`][testscript]. They build real git
+   fixtures and drive the compiled `becket` as a subprocess, locking its
+   *observable* behaviour: stdout, stderr, exit codes, and on-disk state.
+
+[testscript]: https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript
 
 ## Running
 
 ```bash
-make test                    # build the Go binary and run the suite
-tests/run.sh --update        # (re)generate goldens from current behaviour
-tests/run.sh --keep          # keep sandboxes for debugging (prints their paths)
-tests/run.sh lifecycle       # only scenarios whose name matches the filter
+go test ./...                              # everything (unit + E2E)
+make test                                  # same thing
+go test ./... -cover                       # with per-package coverage
+go test . -run TestScripts                 # just the E2E scenarios
+go test . -run TestScripts/02_lifecycle    # a single scenario
+go test . -run TestScripts -update         # regenerate testscript goldens
 ```
 
-The runner drives whatever `$BECKET_BIN` points at as a black box; `make test`
-builds `becket-go` and points it there. Exit status is `0` when every scenario
-matches its golden, `1` otherwise (with a unified diff per failure).
-
-> The original bash implementation has been removed (it lives in git history
-> through v0.2.0); the Go binary is now the sole implementation.
+There is no separate build step and no external test framework: `go test`
+compiles the test binary, and the testscript harness re-execs that same binary
+as `becket` for every `exec becket ...` in a script (see the `TestMain` /
+`RunMain` wiring in `main_test.go`). The JSON schemas are `//go:embed`-ed into
+the binary, so the subprocess is fully self-contained.
 
 ## Requirements
 
-The runner is plain bash and needs `git` plus `perl` (for output normalization).
-The Go binary under test needs only `git`. No `bats` or other test framework.
+`git` must be on `$PATH` (the E2E scenarios and the `internal/git` tests use a
+real git; the git tests `t.Skip` when git is absent). No `bats`, `perl`, or
+other tooling is needed.
 
-## How it works
+## How the E2E scenarios work
 
-- **Isolation.** Each scenario runs in its own throwaway sandbox under `$TMPDIR`
-  with `HOME`, `XDG_DATA_HOME`, and a private `~/.gitconfig` pointed inside it.
-  Git identity, dates, `TZ`, and `LC_ALL` are pinned, and the system/global git
-  config is ignored — nothing touches your real environment.
+- **Isolation.** Each `.txtar` runs in its own `$WORK` sandbox. `Setup`
+  (`setupEnv` in `main_test.go`) pins a hermetic environment: a private
+  `$HOME`/`.gitconfig`, `XDG_DATA_HOME` under `$WORK`, fixed git identity and
+  author/committer dates, `TZ=UTC`, `LC_ALL=C`, `GIT_CONFIG_NOSYSTEM=1`, and no
+  `EDITOR`/`VISUAL`/`TMUX`. Nothing touches your real environment.
 - **Offline git.** Fixtures build each repo with a local **bare repo as its
-  `origin`**, so `worktree`, `fetch`, `rebase`, `push`, and `log origin/..`
-  all work exactly as against a real remote, with zero network.
-- **Install staging.** The runner copies the binary-under-test into a per-sandbox
-  `$SANDBOX/opt/bin/becket` and runs it from there, so any path it emits
-  normalizes deterministically.
-- **One transcript per scenario.** A scenario drives a sequence of commands via
-  `run_becket` and interleaves state snapshots (`show_manifest`, `show_tree`,
-  `show_branches`, `show_worktrees`, `show_settings`). Its full stdout is the
-  golden.
+  `origin`** (inline `exec git init --bare …` / `clone` / `push`), so
+  `worktree`, `fetch`, `rebase`, `push`, and `log origin/…` all work with zero
+  network.
+- **One transcript per scenario.** A scenario drives `exec becket …`, copies
+  stdout/stderr into scratch files, normalizes them with the custom `sanitize`
+  command, then `cmp`s against an in-archive golden (the `-- file --` blocks at
+  the bottom of each `.txtar`). On-disk artifacts (`settings.json`, manifests)
+  are sanitized and compared the same way.
 
 ### Normalization
 
-Everything that legitimately varies run-to-run is replaced with a stable
-placeholder before diffing (see `normalize()` in `run.sh`):
+The `sanitize` command (defined in `main_test.go`) replaces everything that
+legitimately varies run-to-run with a stable placeholder before `cmp`:
 
-| Placeholder  | Replaces                                              |
-|--------------|-------------------------------------------------------|
-| `<SANDBOX>`  | the sandbox path (and its macOS `/private/var` realpath) |
-| `<PREFIX>`   | the binary's install prefix                           |
-| `<DATE>`     | `YYYY-MM-DD` dates (e.g. manifest `created`)          |
-| `<TS>`       | ISO-8601 timestamps (e.g. status `updatedAt`)         |
-| `<RELTIME>`  | git relative times (`335w ago`, `3 days ago`)         |
-| `<SHA>`      | git object ids                                        |
+| Placeholder | Replaces                                                       |
+|-------------|----------------------------------------------------------------|
+| `<SANDBOX>` | the `$WORK` sandbox path (and its macOS `/private/var` realpath) |
+| `<DATE>`    | `YYYY-MM-DD` dates (e.g. manifest `created`)                   |
+| `<TS>`      | ISO-8601 timestamps (e.g. status `updatedAt`)                  |
+| `<RELTIME>` | git relative times (`335w ago`, `3 days ago`)                  |
+| `<VERSION>` | the version token on the `becket v…` line                      |
+| `<SHA>`     | git object ids                                                 |
 
-If a scenario starts flaking, suspect a new unnormalized value first.
+`sanitize -squeeze` additionally collapses runs of spaces (used where git's
+column padding depends on the now-normalized path width).
 
-## Coverage
+If a scenario starts flaking, suspect a new unnormalized value first; regenerate
+with `go test . -run TestScripts -update` and eyeball the diff.
 
-| Scenario            | Commands exercised |
-|---------------------|--------------------|
-| `00_static`         | `version`, `help` (+ default), `shell-init`, unknown-command + no-config errors |
-| `01_init`           | `init` (empty dir, repo discovery, refuse-clobber) |
-| `02_lifecycle`      | `create`, `list` (+ json), `status` (+ json), `add`, `desc`, `teardown --delete-branches` |
-| `03_stacks`         | `create --stacked-on`, stack-aware `list`/`status`, `restack`, guard errors |
-| `04_status_desc`    | `status set`/`clear`, `desc` (explicit id + detect-from-CWD) |
-| `05_sync`           | `sync` (no-op, picks up upstream commits, refuses stacked) |
-| `06_push_log`       | `push`, `log` |
-| `07_stats`          | `stats` |
-| `08_upgrade`        | `upgrade` (migrate old config, idempotent, manifests) |
-| `09_adopt`          | `adopt` (refuse-on-base, adopt existing branch) |
-| `10_shell`          | `shell` (by id, detect-from-CWD, not-found) |
-| `11_setup_files`    | `files` copy (+ missing), `setup` (env injected), `create --setup` (exit 0 path) |
-| `12_flags`          | `create --base`, `teardown` (keep branches), `add` from CWD |
-| `13_adopt_dirty`    | `adopt` auto-stash + restore into worktree |
-| `14_sync_conflict`  | `sync` rebase conflict |
+## E2E scenario coverage
+
+| Scenario             | Commands exercised |
+|----------------------|--------------------|
+| `00_static`          | `version`, `help` (+ default), `shell-init`, unknown-command + no-config errors |
+| `01_init`            | `init` (empty dir, repo discovery, refuse-clobber) |
+| `02_lifecycle`       | `create`, `list` (+ json), `status` (+ json), `add`, `desc`, `teardown --delete-branches` |
+| `03_stacks`          | `create --stacked-on`, stack-aware `list`/`status`, `restack`, guard errors |
+| `04_status_desc`     | `status set`/`clear`, `desc` (explicit id + detect-from-CWD) |
+| `05_sync`            | `sync` (no-op, picks up upstream commits, refuses stacked) |
+| `06_push_log`        | `push`, `log` |
+| `07_stats`           | `stats` |
+| `08_upgrade`         | `upgrade` (migrate old config, idempotent, manifests) |
+| `09_adopt`           | `adopt` (refuse-on-base, adopt existing branch) |
+| `10_shell`           | `shell` (by id, detect-from-CWD, not-found) |
+| `11_setup_files`     | `files` copy (+ missing), `setup` (env injected), `create --setup` |
+| `12_flags`           | `create --base`, `teardown` (keep branches), `add` from CWD |
+| `13_adopt_dirty`     | `adopt` auto-stash + restore into worktree |
+| `14_sync_conflict`   | `sync` rebase conflict |
 | `15_restack_conflict`| `restack` rebase conflict + resolution hints |
-| `16_discovery`      | `init` default-base detection (main vs master) |
-| `17_stack_fallback` | stacked child where parent lacks a repo → base fallback warning |
+| `16_discovery`       | `init` default-base detection (main vs master) |
+| `17_stack_fallback`  | stacked child where parent lacks a repo → base fallback warning |
 
-Every dispatched command is now exercised **except `dev` and `pr`**, and most
-have multiple branches covered.
+Every dispatched command is exercised **except `dev` and `pr`**, and most have
+multiple branches covered.
 
 ### Not covered
 
-- **`dev`** — requires `tmux` and a TTY; spawns a persistent session. Coverable
-  only by stubbing a fake `tmux` on `$PATH` (deliberately omitted — the stub
-  would make the test less faithful than it looks).
+- **`dev`** — requires `tmux` and a TTY; spawns a persistent session. Only
+  coverable by stubbing a fake `tmux` on `$PATH` (deliberately omitted — the
+  stub would make the test less faithful than it looks).
 - **`pr`** — requires the `gh` CLI and a real GitHub remote/auth; likewise only
-  coverable with a fake `gh` on `$PATH`.
+  coverable with a fake `gh`.
 - **The interactive repo picker** in `create`/`adopt` — needs a real TTY on
   stdin, so it can't be golden-tested. The non-TTY default (select all repos) is
   covered instead.
-- **`status` of a missing worktree** (worktree dir deleted out from under a
-  workspace) — minor branch, not yet exercised.
-
-## Source of truth & history
-
-The goldens track the **Go binary**. During the migration they were kept green
-against both the bash script and the Go port (a single golden set proving
-equivalence); now that the migration is complete, the bash script has been
-removed and the goldens follow the Go binary alone.
 
 ### Git-version sensitivity
 
 The conflict scenarios (`14`, `15`) capture **git's own** rebase and hint text,
-which changes between git versions. If you upgrade git and those two go red with
-only wording differences, `--update` and eyeball the diff. (CI excludes them via
-`BECKET_SKIP=conflict` and runs them informationally.)
+which can change between git versions. They run as part of the normal suite. If
+you upgrade git and those two go red with only wording differences, regenerate
+with `go test . -run TestScripts -update` and eyeball the diff.
+
+## History
+
+This suite began as the **migration contract** for the bash → Go + Cobra
+rewrite, first as a bash golden-master runner (`run.sh` + `lib/` + `scenarios/`
++ `golden/`), then ported to Go testscript. The bash runner has been retired (it
+lives in git history); the Go binary is the sole implementation and the
+testscript goldens track it.

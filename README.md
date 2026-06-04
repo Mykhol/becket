@@ -103,11 +103,12 @@ top-level `files` (copied into each workspace), `docker`, and `session`.
 
 ```bash
 make build      # build ./becket-go
-make test       # build and run the characterization suite
+make test       # go test ./... (unit + testscript E2E suite)
 make install    # build + install to ~/.local/bin/becket
 ```
 
-See [`tests/README.md`](tests/README.md) for the characterization suite.
+See [`tests/README.md`](tests/README.md) for the test layout (per-package unit
+tests + testscript `.txtar` end-to-end scenarios).
 
 ## License
 

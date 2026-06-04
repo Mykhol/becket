@@ -1,0 +1,80 @@
+# Stacking a child onto a parent that doesn't include one of the child's repos:
+# that repo falls back to its defaultBase (with a warning) instead of a parent
+# branch.
+# Ported from tests/scenarios/17_stack_fallback.sh + tests/golden/17_stack_fallback.txt.
+#
+# Setup mirrors harness.sh setup_platform alpha beta: two repos (each a clone of
+# a bare origin with one seeded commit on main) plus a quiet `becket init`. The
+# parent's create/push output is intentionally not part of this transcript (the
+# bash scenario discards it); only the child create + resulting manifest matter.
+
+mkdir platform origins
+
+# mk_repo alpha
+exec git init --bare origins/alpha.git
+exec git clone origins/alpha.git platform/alpha
+cp readme platform/alpha/README.md
+exec git -C platform/alpha add README.md
+exec git -C platform/alpha commit -m 'init alpha'
+exec git -C platform/alpha push -u origin main
+
+# mk_repo beta
+exec git init --bare origins/beta.git
+exec git clone origins/beta.git platform/beta
+cp readme platform/beta/README.md
+exec git -C platform/beta add README.md
+exec git -C platform/beta commit -m 'init beta'
+exec git -C platform/beta push -u origin main
+
+cd platform
+exec becket init
+
+# ── parent workspace covers only one of the two repos ───────────────────────────
+exec becket create parent --repos alpha
+exec becket push parent
+
+# ── child stacks on parent across both repos: beta falls back to its base ───────
+exec becket create child --stacked-on parent --repos alpha,beta
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-child.stdout
+cmp err $WORK/create-child.stderr
+
+# manifest: child
+sanitize $WORK/platform/.becket/workspaces/child/.becket.json
+cmp $WORK/platform/.becket/workspaces/child/.becket.json $WORK/manifest-child.json
+
+-- readme --
+# repo
+-- create-child.stdout --
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/child
+▸ Creating worktree: alpha → feature/child (base: feature/parent)
+HEAD is now at <SHA> init alpha
+▸ Stack parent 'parent' has no 'beta' — basing on 'main' instead.
+▸ Creating worktree: beta → feature/child (base: main)
+HEAD is now at <SHA> init beta
+
+▸ Workspace child ready at <SANDBOX>/platform/.becket/workspaces/child
+▸ Branch: feature/child
+-- create-child.stderr --
+Preparing worktree (new branch 'feature/child')
+Preparing worktree (new branch 'feature/child')
+-- manifest-child.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "child",
+  "created": "<DATE>",
+  "description": "",
+  "stackParent": "parent",
+  "repos": {
+    "alpha": {
+      "branch": "feature/child",
+      "base": "feature/parent"
+    },
+    "beta": {
+      "branch": "feature/child",
+      "base": "main"
+    }
+  }
+}

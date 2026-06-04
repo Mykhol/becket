@@ -1,0 +1,157 @@
+# Status notes (status set/clear) and descriptions (desc), including the
+# detect-from-CWD path and desc's flexible argument ordering.
+# Ported from tests/scenarios/04_status_desc.sh + tests/golden/04_status_desc.txt.
+#
+# Setup mirrors harness.sh setup_platform: build one repo (a clone of a bare
+# origin with one seeded commit on main) and run `becket init` quietly. The
+# workspace is then created quietly — only the status/desc transcript matters.
+#
+# The CWD-detection paths (`status` and `desc` with no id) are exercised by
+# `cd`-ing into the workspace dir before invoking becket, exactly as the bash
+# scenario does. Status-note "(alice, just now)" is deterministic because the
+# note is written and read back within the same run.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# create the workspace (output not part of this scenario's transcript)
+exec becket create ws-a --repos service
+
+# ── set a status note from inside the workspace (id detected from CWD) ──────────
+# Manifests are sanitized via a COPY (not in place): the next `becket status`
+# reads the live manifest, so rewriting its timestamp to <TS> there would make
+# RelativeTime fail to parse and drop the "just now" suffix.
+cd $WORK/platform/.becket/workspaces/ws-a
+exec becket status set 'blocked on review' --by alice
+cp stdout out
+sanitize out
+cmp out $WORK/status-set.stdout
+
+cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+sanitize manifest
+cmp manifest $WORK/manifest-set.json
+
+# ── status (no id) from inside the workspace shows that workspace ───────────────
+exec becket status
+cp stdout out
+sanitize out
+cmp out $WORK/status.stdout
+
+# ── clear the status note ───────────────────────────────────────────────────────
+exec becket status clear
+cp stdout out
+sanitize out
+cmp out $WORK/status-clear.stdout
+
+cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+sanitize manifest
+cmp manifest $WORK/manifest-clear.json
+
+# ── desc with explicit id (run from the platform root) ──────────────────────────
+cd $WORK/platform
+exec becket desc ws-a 'first description'
+cp stdout out
+sanitize out
+cmp out $WORK/desc-explicit.stdout
+
+cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+sanitize manifest
+cmp manifest $WORK/manifest-desc1.json
+
+# ── desc with id detected from CWD (single-arg form) ────────────────────────────
+cd $WORK/platform/.becket/workspaces/ws-a
+exec becket desc 'second description'
+cp stdout out
+sanitize out
+cmp out $WORK/desc-cwd.stdout
+
+cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+sanitize manifest
+cmp manifest $WORK/manifest-desc2.json
+
+-- readme --
+# repo
+-- status-set.stdout --
+▸ Status set for ws-a: blocked on review
+-- manifest-set.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws-a",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/ws-a",
+      "base": "main"
+    }
+  },
+  "status": {
+    "text": "blocked on review",
+    "updatedAt": "<TS>",
+    "updatedBy": "alice"
+  }
+}
+-- status.stdout --
+
+Workspace: ws-a
+  Status: blocked on review (alice, just now)
+
+  REPO      BRANCH         STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ─────────────  ────────   ────────────   ───────────
+  service   feature/ws-a   clean      +0 / -0        <RELTIME>
+
+-- status-clear.stdout --
+▸ Status cleared for ws-a
+-- manifest-clear.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws-a",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/ws-a",
+      "base": "main"
+    }
+  }
+}
+-- desc-explicit.stdout --
+▸ Description set for ws-a: first description
+-- manifest-desc1.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws-a",
+  "created": "<DATE>",
+  "description": "first description",
+  "repos": {
+    "service": {
+      "branch": "feature/ws-a",
+      "base": "main"
+    }
+  }
+}
+-- desc-cwd.stdout --
+▸ Description set for ws-a: second description
+-- manifest-desc2.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws-a",
+  "created": "<DATE>",
+  "description": "second description",
+  "repos": {
+    "service": {
+      "branch": "feature/ws-a",
+      "base": "main"
+    }
+  }
+}

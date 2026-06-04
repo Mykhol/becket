@@ -1,0 +1,105 @@
+# Platform `files` copy + `setup` commands + the `create --setup` flag.
+# A non-empty `files` array also makes create reach exit 0, so this is also the
+# one create path that completes cleanly.
+# Ported from tests/scenarios/11_setup_files.sh + tests/golden/11_setup_files.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh, then
+# the init-generated config is replaced with one carrying files + setup + env.
+# The workspaces tree is captured with `find -mindepth 1 -maxdepth 2` piped
+# through `sort` (LC_ALL=C is pinned in Setup) to match the bash harness's
+# show_tree ordering deterministically.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# Replace the init-generated config with one that has files + setup + env.
+cp $WORK/settings-src $WORK/platform/.becket/settings.json
+cp $WORK/shared $WORK/platform/shared.txt    # "missing.txt" intentionally absent
+
+# ── create --setup: copies platform files (warns on missing), then runs setup ────
+exec becket create feat --repos service --setup
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create.stdout
+cmp err $WORK/create.stderr
+
+# workspaces tree (find then sort for deterministic ordering)
+cd $WORK/platform/.becket/workspaces
+exec find . -mindepth 1 -maxdepth 2
+cp stdout tree
+exec sort tree
+cp stdout tree
+sanitize tree
+cmp tree $WORK/tree.txt
+cd $WORK/platform
+
+# ── standalone setup re-runs the configured commands with env injected ───────────
+exec becket setup feat
+cp stdout out
+sanitize out
+cmp out $WORK/setup.stdout
+
+-- readme --
+# repo
+-- shared --
+shared platform file
+-- settings-src --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main",
+      "setup": ["echo configuring service", "echo greeting=$GREETING"],
+      "env": { "GREETING": "hi" }
+    }
+  },
+  "branchPrefix": "feature/",
+  "files": ["shared.txt", "missing.txt"]
+}
+-- create.stdout --
+▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
+▸ Creating worktree: service → feature/feat (base: main)
+HEAD is now at <SHA> init service
+▸ Copied: shared.txt
+▸ File not found, skipping: missing.txt
+
+▸ Workspace feat ready at <SANDBOX>/platform/.becket/workspaces/feat
+▸ Branch: feature/feat
+
+▸ Setting up service...
+▸   Running: echo configuring service
+configuring service
+▸   Running: echo greeting=$GREETING
+greeting=hi
+
+▸ Setup complete for workspace feat.
+-- create.stderr --
+Preparing worktree (new branch 'feature/feat')
+-- tree.txt --
+./feat
+./feat/.becket.json
+./feat/AGENTS.md
+./feat/docs
+./feat/service
+./feat/shared.txt
+./feat/workspace.schema.json
+-- setup.stdout --
+▸ Setting up service...
+▸   Running: echo configuring service
+configuring service
+▸   Running: echo greeting=$GREETING
+greeting=hi
+
+▸ Setup complete for workspace feat.

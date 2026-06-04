@@ -1,0 +1,52 @@
+# becket stats — aggregates the usage log that every invocation appends to.
+# Counts are deterministic for a fixed command sequence (init, create, status,
+# list, plus stats counting itself).
+# Ported from tests/scenarios/07_stats.sh + tests/golden/07_stats.txt.
+#
+# Fixtures are built inline with `exec git`, matching tests/lib/harness.sh. The
+# usage log lives under $XDG_DATA_HOME (pinned per-script in Setup), so it starts
+# empty and only this script's invocations are counted. The command sequence
+# below must stay exact — every logged becket call shows up in the totals.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init                              # logs: init
+exec becket create ws --repos service         # logs: create
+
+# status + list run from inside the workspace dir so they are attributed to ws.
+cd $WORK/platform/.becket/workspaces/ws
+exec becket status                            # logs: status (workspace=ws)
+exec becket list                              # logs: list (workspace=ws)
+
+# ── stats summarizes command counts, workspaces, and platforms ───────────────────
+exec becket stats
+cp stdout out
+sanitize out
+cmp out $WORK/stats.stdout
+
+-- readme --
+# repo
+-- stats.stdout --
+Total commands run: 5
+
+Command usage:
+  init                1  █
+  create              1  █
+  status              1  █
+  list                1  █
+  stats               1  █
+
+Most active workspaces:
+  ws                            3
+
+Platforms:
+  platform                      4

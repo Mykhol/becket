@@ -1,0 +1,63 @@
+# becket sync when the rebase onto origin/<base> hits a conflict.
+# Ported from tests/scenarios/14_sync_conflict.sh + tests/golden/14_sync_conflict.txt.
+#
+# This scenario stresses normalization: the git rebase failure prints object
+# SHAs (-> <SHA>), the origin realpath (-> <SANDBOX>), and conflict hints. It
+# is the canonical proof that the sanitize pattern handles error transcripts.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# create the workspace (output not part of this scenario's transcript)
+exec becket create ws --repos service
+
+# Feature branch and base branch edit the same line -> guaranteed rebase
+# conflict. The worktree lives at .becket/workspaces/ws/service.
+cp $WORK/feature $WORK/platform/.becket/workspaces/ws/service/README.md
+exec git -C $WORK/platform/.becket/workspaces/ws/service add README.md
+exec git -C $WORK/platform/.becket/workspaces/ws/service commit -m 'feat: rewrite readme'
+
+exec git -C $WORK/platform/service checkout main
+cp $WORK/mainver $WORK/platform/service/README.md
+exec git -C $WORK/platform/service add README.md
+exec git -C $WORK/platform/service commit -m 'main: rewrite readme'
+exec git -C $WORK/platform/service push origin main
+
+# ── sync reports the rebase conflict ────────────────────────────────────────────
+! exec becket sync ws
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/sync.stdout
+cmp err $WORK/sync.stderr
+
+-- readme --
+# repo
+-- feature --
+FEATURE VERSION
+-- mainver --
+MAIN VERSION
+-- sync.stdout --
+▸ Syncing service ← origin/main...
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+-- sync.stderr --
+From <SANDBOX>/origins/service
+ * branch            main       -> FETCH_HEAD
+Rebasing (1/1)error: could not apply <SHA>... feat: rewrite readme
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply <SHA>... # feat: rewrite readme

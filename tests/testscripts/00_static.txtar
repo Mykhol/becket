@@ -1,0 +1,130 @@
+# Static output and global error paths — no platform required.
+# Ported from tests/scenarios/00_static.sh + tests/golden/00_static.txt.
+#
+# These are pure-output commands that load no config. We run from the sandbox
+# root ($WORK) which has no .becket/ anywhere up the tree, proving the
+# config-less commands don't need a platform and the platform-requiring ones
+# fail with guidance.
+#
+# Each command's stdout/stderr is copied into a scratch file, sanitized in
+# place (only `version` actually changes — its version token), then compared
+# against an in-archive golden. Goldens live at the txtar root ($WORK).
+
+# ── version (three spellings, identical output) ─────────────────────────────────
+exec becket version
+cp stdout out
+sanitize out
+cmp out $WORK/version.stdout
+
+exec becket --version
+cp stdout out
+sanitize out
+cmp out $WORK/version.stdout
+
+exec becket -v
+cp stdout out
+sanitize out
+cmp out $WORK/version.stdout
+
+# ── help (explicit, and as the default command) ─────────────────────────────────
+exec becket help
+cp stdout out
+sanitize out
+cmp out $WORK/help.stdout
+
+exec becket
+cp stdout out
+sanitize out
+cmp out $WORK/help.stdout
+
+# ── shell-init (shell wrapper + completion bootstrap) ───────────────────────────
+exec becket shell-init
+cp stdout out
+sanitize out
+cmp out $WORK/shell-init.stdout
+
+# ── unknown command is rejected ─────────────────────────────────────────────────
+! exec becket frobnicate
+cp stderr err
+sanitize err
+cmp err $WORK/frobnicate.stderr
+
+# ── commands that require a platform die with guidance when none exists ─────────
+! exec becket list
+cp stderr err
+sanitize err
+cmp err $WORK/no-platform.stderr
+
+! exec becket status
+cp stderr err
+sanitize err
+cmp err $WORK/no-platform.stderr
+
+-- version.stdout --
+becket v<VERSION>
+-- help.stdout --
+becket — cross-repo git-worktree workspaces.
+
+Create feature-scoped workspaces of coordinated git worktrees across
+multiple repositories, all on a shared feature branch.
+
+Usage:
+  becket [flags]
+  becket [command]
+
+Platform Commands:
+  init        Initialize .becket/ in current directory
+  list        List all active workspaces
+  stats       Show local command usage statistics
+  upgrade     Update config + schemas to latest version
+
+Workspace Commands:
+  add         Add a repo to an existing workspace
+  adopt       Adopt existing branches into a new workspace
+  create      Create workspace + worktrees
+  teardown    Remove worktrees + workspace
+
+Develop Commands:
+  dev         Start dev environment (docker + tmux)
+  setup       Run setup commands for workspace repos
+  shell       Print workspace directory path (use with shell-init)
+  shell-init  Output shell wrapper for eval (enables 'becket shell' as cd)
+
+Sync & Ship Commands:
+  desc        Set workspace description
+  log         Show commits across all repos since branching
+  pr          Open GitHub PRs for all repos (requires gh)
+  push        Push all repo branches to origin
+  restack     Rebase a stacked workspace onto its parent's current tips
+  status      Show branch status across repos
+  sync        Rebase all repos against their base branch
+
+Additional Commands:
+  completion  Generate the autocompletion script for the specified shell
+  help        Help about any command
+  version     Show version
+
+Flags:
+  -h, --help      help for becket
+  -v, --version   Show version
+
+Use "becket [command] --help" for more information about a command.
+-- shell-init.stdout --
+becket() {
+  if [[ "$1" == "shell" ]]; then
+    local _becket_dir
+    _becket_dir="$(command becket shell "${@:2}")" || return $?
+    builtin cd "$_becket_dir"
+  else
+    command becket "$@"
+  fi
+}
+if [[ -n "$ZSH_VERSION" ]]; then
+  source <(command becket completion zsh)
+elif [[ -n "$BASH_VERSION" ]]; then
+  source <(command becket completion bash)
+fi
+-- frobnicate.stderr --
+error: Unknown command: frobnicate. Run 'becket help' for usage.
+-- no-platform.stderr --
+error: No .becket/settings.json found. Run 'becket init' in your platform directory.
