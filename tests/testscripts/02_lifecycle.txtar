@@ -207,16 +207,16 @@ proj-42   service   <DATE>       dark mode
 
 Workspace: proj-42 — dark mode
 
-  REPO      BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
-  ────────  ────────────────────────────────  ────────   ────────────   ───────────
+  REPO      BRANCH                      STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ──────────────────────────  ────────   ────────────   ───────────
   service   feature/proj-42-dark-mode   clean      +0 / -0        <RELTIME>
 
 -- status-one.stdout --
 
 Workspace: proj-42 — dark mode
 
-  REPO      BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
-  ────────  ────────────────────────────────  ────────   ────────────   ───────────
+  REPO      BRANCH                      STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ──────────────────────────  ────────   ────────────   ───────────
   service   feature/proj-42-dark-mode   clean      +0 / -0        <RELTIME>
 
 -- status-one.json --
