@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── Becket: Cross-repo worktree CLI ──────────────────────────────────────────
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 USAGE_LOG="${XDG_DATA_HOME:-$HOME/.local/share}/becket/usage.log"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
@@ -585,7 +585,7 @@ for f in d.get('files', []):
     print(f)
 " "$CONFIG_FILE")
 
-  for file in "${files[@]}"; do
+  for file in ${files[@]+"${files[@]}"}; do
     local src="$PLATFORM_DIR/$file"
     if [[ -e "$src" ]]; then
       cp -a "$src" "$ws_path/"
@@ -778,7 +778,7 @@ for f in d.get('files', []):
     print(f)
 " "$CONFIG_FILE")
 
-  for file in "${files[@]}"; do
+  for file in ${files[@]+"${files[@]}"}; do
     local src="$PLATFORM_DIR/$file"
     if [[ -e "$src" ]]; then
       cp -a "$src" "$ws_path/"

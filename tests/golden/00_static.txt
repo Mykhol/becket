@@ -3,24 +3,24 @@
 $ becket version
 [exit 0]
 --- stdout ---
-becket v0.1.0
+becket v0.2.0
 
 $ becket --version
 [exit 0]
 --- stdout ---
-becket v0.1.0
+becket v0.2.0
 
 $ becket -v
 [exit 0]
 --- stdout ---
-becket v0.1.0
+becket v0.2.0
 
 ### help (explicit, and as the default command)
 
 $ becket help
 [exit 0]
 --- stdout ---
-becket v0.1.0 — Cross-repo worktree CLI
+becket v0.2.0 — Cross-repo worktree CLI
 
 USAGE
   becket <command> [options]
@@ -93,7 +93,7 @@ FILES
 $ becket 
 [exit 0]
 --- stdout ---
-becket v0.1.0 — Cross-repo worktree CLI
+becket v0.2.0 — Cross-repo worktree CLI
 
 USAGE
   becket <command> [options]

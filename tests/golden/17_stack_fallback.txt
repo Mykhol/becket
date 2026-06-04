@@ -3,7 +3,7 @@
 ### child stacks on parent across both repos: beta falls back to its base
 
 $ becket create child --stacked-on parent --repos alpha,beta
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/child
 ▸ Creating worktree: alpha → feature/child (base: feature/parent)
@@ -11,10 +11,12 @@ HEAD is now at <SHA> init alpha
 ▸ Stack parent 'parent' has no 'beta' — basing on 'main' instead.
 ▸ Creating worktree: beta → feature/child (base: main)
 HEAD is now at <SHA> init beta
+
+▸ Workspace child ready at <SANDBOX>/platform/.becket/workspaces/child
+▸ Branch: feature/child
 --- stderr ---
 Preparing worktree (new branch 'feature/child')
 Preparing worktree (new branch 'feature/child')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 # manifest: child
 {

@@ -8,7 +8,7 @@ error: Repo 'service' is already on base branch 'main'. Nothing to adopt.
 ### adopt the repo's current feature branch into a new workspace
 
 $ becket adopt rescued --repos service
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Detected service on branch feature/existing-work
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
@@ -16,10 +16,13 @@ $ becket adopt rescued --repos service
 Your branch is up to date with 'origin/main'.
 ▸ Creating worktree: service → feature/existing-work
 HEAD is now at <SHA> wip: pre-existing work
+
+▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Adopted branches:
+▸   service → feature/existing-work
 --- stderr ---
 Switched to branch 'main'
 Preparing worktree (checking out 'feature/existing-work')
-<SANDBOX>/opt/bin/becket: line 608: files[@]: unbound variable
 
 # manifest: rescued
 {

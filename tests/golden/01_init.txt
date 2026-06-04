@@ -16,7 +16,7 @@ $ becket init
 [exit 0]
 --- stdout ---
 ▸ Scanning for git repos in <SANDBOX>/platform...
-▸ Found repo: service-admin (base: main)
+▸ Found repo: admin (base: main)
 ▸ Found repo: service (base: main)
 ▸ Created <SANDBOX>/platform/.becket/settings.json
 
@@ -24,8 +24,8 @@ $ becket init
 {
   "$schema": "./settings.schema.json",
   "repos": {
-    "service-admin": {
-      "path": "./service-admin",
+    "admin": {
+      "path": "./admin",
       "defaultBase": "main"
     },
     "service": {

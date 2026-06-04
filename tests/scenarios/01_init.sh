@@ -12,7 +12,7 @@ note "init discovers sibling git repos and records their default base"
 rm -rf "$PLATFORM"
 mk_platform
 mk_repo service
-mk_repo service-admin
+mk_repo admin
 run_becket init
 show_settings
 

@@ -1,7 +1,7 @@
 ### adopt stashes the dirty change and restores it in the worktree
 
 $ becket adopt rescued --repos service
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Detected service on branch feature/wip
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
@@ -20,10 +20,13 @@ Changes not staged for commit:
 
 no changes added to commit (use "git add" and/or "git commit -a")
 Dropped refs/stash@{0} (<SHA>)
+
+▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Adopted branches:
+▸   service → feature/wip
 --- stderr ---
 Switched to branch 'main'
 Preparing worktree (checking out 'feature/wip')
-<SANDBOX>/opt/bin/becket: line 608: files[@]: unbound variable
 
 # manifest: rescued
 {

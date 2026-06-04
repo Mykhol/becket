@@ -34,8 +34,8 @@ $ becket status
 Workspace: ws-a
   Status: blocked on review (alice, just now)
 
-  REPO     BRANCH         STATUS     AHEAD/BEHIND   LAST COMMIT
-  ───────  ─────────────  ────────   ────────────   ───────────
+  REPO      BRANCH         STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ─────────────  ────────   ────────────   ───────────
   service   feature/ws-a   clean      +0 / -0        <RELTIME>
 
 

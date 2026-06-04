@@ -45,18 +45,13 @@ if [ ! -x "$BECKET_BIN" ]; then
   exit 2
 fi
 
-# Staging: when testing this repo's bash script (the default), reproduce the
-# `make install` layout inside each sandbox so the binary can locate its schema
-# dir — exactly as an installed becket does. This silences the spurious
-# "config outdated" warning and exercises the schema-copy paths in init/upgrade.
-# When BECKET_BIN is overridden (e.g. a self-contained Go binary), skip staging
-# and run it in place.
-if [ "$BECKET_BIN" = "$ROOT/bin/becket" ]; then
-  export BECKET_STAGE=1
-  export BECKET_SCHEMA_SRC="$ROOT/schema"
-else
-  export BECKET_STAGE=0
-fi
+# Staging: reproduce the `make install` layout ($SANDBOX/opt/{bin,share/becket})
+# inside each sandbox and run the binary-under-test from there. This gives a
+# stable, normalizable install prefix (so shell-init output matches across the
+# bash and Go binaries), lets the bash script find its schema dir, and exercises
+# the schema-copy paths. A self-contained binary (Go) ignores the staged schemas.
+export BECKET_STAGE=1
+export BECKET_SCHEMA_SRC="$ROOT/schema"
 
 mkdir -p "$GOLDEN_DIR"
 

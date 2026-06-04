@@ -1,14 +1,16 @@
 ### create --base overrides the base branch the worktree is cut from
 
 $ becket create feat --repos service --base develop
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
 ▸ Creating worktree: service → feature/feat (base: develop)
 HEAD is now at <SHA> init service
+
+▸ Workspace feat ready at <SANDBOX>/platform/.becket/workspaces/feat
+▸ Branch: feature/feat
 --- stderr ---
 Preparing worktree (new branch 'feature/feat')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 # manifest: feat
 {
@@ -42,12 +44,12 @@ main
 
 ### add with the workspace id detected from the current directory (single-arg form)
 
-$ becket add service-admin
+$ becket add admin
 [exit 0]
 --- stdout ---
-▸ Creating worktree: service-admin → feature/multi (base: main)
-HEAD is now at <SHA> init service-admin
-▸ Added service-admin to workspace multi
+▸ Creating worktree: admin → feature/multi (base: main)
+HEAD is now at <SHA> init admin
+▸ Added admin to workspace multi
 --- stderr ---
 Preparing worktree (new branch 'feature/multi')
 
@@ -62,7 +64,7 @@ Preparing worktree (new branch 'feature/multi')
       "branch": "feature/multi",
       "base": "main"
     },
-    "service-admin": {
+    "admin": {
       "branch": "feature/multi",
       "base": "main"
     }

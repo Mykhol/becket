@@ -112,21 +112,30 @@ have multiple branches covered.
 - **`status` of a missing worktree** (worktree dir deleted out from under a
   workspace) — minor branch, not yet exercised.
 
-## Captured quirks — golden ≠ gospel
+## Cross-binary contract
 
-The goldens record what becket does **today**, bugs included. A diff is a
-decision point, not an automatic failure. Known captured bug:
+The suite drives whatever `$BECKET_BIN` points at, and the goldens are kept
+green against **both** the original bash script and the Go + Cobra port, so a
+single golden set proves behavioural equivalence:
 
-- **`create` and `adopt` exit `1` even on success** when the platform config has
-  no `files` array. Cause: `for file in "${files[@]}"` over an empty array under
-  `set -u` is an "unbound variable" error on **bash 3.2** (the macOS default
-  shell). The workspace, manifest, and worktrees are still created — only the
-  exit code (and the file-copy/`--setup` steps after it) are lost. See
-  `bin/becket:588` (`create`) and `:781` (`adopt`).
+```bash
+./tests/run.sh                          # bash (bin/becket)
+BECKET_BIN=./becket-go ./tests/run.sh   # Go port
+```
 
-  The Go port should **fix** this (exit `0`). When it does, regenerate the
-  affected goldens with `--update` — they currently serve as the "before".
+The runner stages an install layout per sandbox, so the install prefix (used by
+`shell-init`) normalizes identically for either binary.
 
-Also note: the conflict scenarios (`14`, `15`) capture **git's own** rebase and
-hint text, which changes between git versions. If you upgrade git and those two
-go red with only wording differences, `--update` and eyeball the diff.
+### Fixed during the port — golden ≠ gospel
+
+`create`/`adopt` used to exit `1` even on success when the config had no `files`
+array — `for file in "${files[@]}"` over an empty array under `set -u` is an
+"unbound variable" error on **bash 3.2**. This was fixed in **both** the bash
+script (empty-array guard, `bin/becket:588`/`:781`) and the Go port (which never
+had the bug), and the affected goldens now record the corrected exit-0 behaviour.
+
+### Git-version sensitivity
+
+The conflict scenarios (`14`, `15`) capture **git's own** rebase and hint text,
+which changes between git versions. If you upgrade git and those two go red with
+only wording differences, `--update` and eyeball the diff.

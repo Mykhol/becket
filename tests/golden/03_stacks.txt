@@ -1,14 +1,16 @@
 ### create the base workspace and push it so its branch exists on origin
 
 $ becket create base-feature --desc base --repos service
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/base-feature
 ▸ Creating worktree: service → feature/base-feature-base (base: main)
 HEAD is now at <SHA> init service
+
+▸ Workspace base-feature ready at <SANDBOX>/platform/.becket/workspaces/base-feature
+▸ Branch: feature/base-feature-base
 --- stderr ---
 Preparing worktree (new branch 'feature/base-feature-base')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 $ becket push base-feature
 [exit 0]
@@ -24,14 +26,16 @@ To <SANDBOX>/origins/service.git
 ### create a workspace stacked on top of it
 
 $ becket create stacked-feature --stacked-on base-feature --repos service
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/stacked-feature
 ▸ Creating worktree: service → feature/stacked-feature (base: feature/base-feature-base)
 HEAD is now at <SHA> init service
+
+▸ Workspace stacked-feature ready at <SANDBOX>/platform/.becket/workspaces/stacked-feature
+▸ Branch: feature/stacked-feature
 --- stderr ---
 Preparing worktree (new branch 'feature/stacked-feature')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 # manifest: base-feature
 {
@@ -82,8 +86,8 @@ $ becket list
 [exit 0]
 --- stdout ---
 
-ID                REPOS    CREATED      DESCRIPTION
-────────────────  ───────  ──────────   ──────────────────────────────
+ID                REPOS     CREATED      DESCRIPTION
+────────────────  ────────  ──────────   ──────────────────────────────
 base-feature      service   <DATE>   base
 stacked-feature   service   <DATE>   
   ↑ stacked on base-feature
@@ -96,8 +100,8 @@ $ becket status stacked-feature
 Workspace: stacked-feature
   Stacked on: base-feature
 
-  REPO     BRANCH                    STATUS     AHEAD/BEHIND   LAST COMMIT
-  ───────  ────────────────────────  ────────   ────────────   ───────────
+  REPO      BRANCH                    STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ────────────────────────  ────────   ────────────   ───────────
   service   feature/stacked-feature   clean      +0 / -0        <RELTIME>
 
 

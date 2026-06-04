@@ -1,14 +1,16 @@
 ### create a workspace scoped to one repo, with a description
 
 $ becket create proj-42 --desc dark mode --repos service
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/proj-42
 ▸ Creating worktree: service → feature/proj-42-dark-mode (base: main)
 HEAD is now at <SHA> init service
+
+▸ Workspace proj-42 ready at <SANDBOX>/platform/.becket/workspaces/proj-42
+▸ Branch: feature/proj-42-dark-mode
 --- stderr ---
 Preparing worktree (new branch 'feature/proj-42-dark-mode')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 # manifest: proj-42
 {
@@ -39,8 +41,8 @@ $ becket list
 [exit 0]
 --- stdout ---
 
-ID        REPOS    CREATED      DESCRIPTION
-────────  ───────  ──────────   ──────────────────────────────
+ID        REPOS     CREATED      DESCRIPTION
+────────  ────────  ──────────   ──────────────────────────────
 proj-42   service   <DATE>   dark mode
 
 
@@ -68,8 +70,8 @@ $ becket status
 
 Workspace: proj-42 — dark mode
 
-  REPO     BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
-  ───────  ────────────────────────────────  ────────   ────────────   ───────────
+  REPO      BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ────────────────────────────────  ────────   ────────────   ───────────
   service   feature/proj-42-dark-mode   clean      +0 / -0        <RELTIME>
 
 
@@ -79,8 +81,8 @@ $ becket status proj-42
 
 Workspace: proj-42 — dark mode
 
-  REPO     BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
-  ───────  ────────────────────────────────  ────────   ────────────   ───────────
+  REPO      BRANCH                            STATUS     AHEAD/BEHIND   LAST COMMIT
+  ────────  ────────────────────────────────  ────────   ────────────   ───────────
   service   feature/proj-42-dark-mode   clean      +0 / -0        <RELTIME>
 
 
@@ -110,12 +112,12 @@ $ becket status proj-42 --output json
 
 ### add a second repo to the workspace (reuses the feature branch)
 
-$ becket add proj-42 service-admin
+$ becket add proj-42 admin
 [exit 0]
 --- stdout ---
-▸ Creating worktree: service-admin → feature/proj-42-dark-mode (base: main)
-HEAD is now at <SHA> init service-admin
-▸ Added service-admin to workspace proj-42
+▸ Creating worktree: admin → feature/proj-42-dark-mode (base: main)
+HEAD is now at <SHA> init admin
+▸ Added admin to workspace proj-42
 --- stderr ---
 Preparing worktree (new branch 'feature/proj-42-dark-mode')
 
@@ -130,7 +132,7 @@ Preparing worktree (new branch 'feature/proj-42-dark-mode')
       "branch": "feature/proj-42-dark-mode",
       "base": "main"
     },
-    "service-admin": {
+    "admin": {
       "branch": "feature/proj-42-dark-mode",
       "base": "main"
     }
@@ -138,7 +140,7 @@ Preparing worktree (new branch 'feature/proj-42-dark-mode')
 }
 
 
-# branches: service-admin
+# branches: admin
 feature/proj-42-dark-mode
 main
 
@@ -146,9 +148,9 @@ main
 ./proj-42
 ./proj-42/.becket.json
 ./proj-42/AGENTS.md
+./proj-42/admin
 ./proj-42/docs
 ./proj-42/service
-./proj-42/service-admin
 ./proj-42/workspace.schema.json
 
 ### change the description after the fact
@@ -169,7 +171,7 @@ $ becket desc proj-42 real-time dark mode
       "branch": "feature/proj-42-dark-mode",
       "base": "main"
     },
-    "service-admin": {
+    "admin": {
       "branch": "feature/proj-42-dark-mode",
       "base": "main"
     }
@@ -180,17 +182,19 @@ $ becket desc proj-42 real-time dark mode
 ### creating with no --repos selects all repos (non-TTY default)
 
 $ becket create dash-9
-[exit 1]
+[exit 0]
 --- stdout ---
 ▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/dash-9
-▸ Creating worktree: service-admin → feature/dash-9 (base: main)
-HEAD is now at <SHA> init service-admin
+▸ Creating worktree: admin → feature/dash-9 (base: main)
+HEAD is now at <SHA> init admin
 ▸ Creating worktree: service → feature/dash-9 (base: main)
 HEAD is now at <SHA> init service
+
+▸ Workspace dash-9 ready at <SANDBOX>/platform/.becket/workspaces/dash-9
+▸ Branch: feature/dash-9
 --- stderr ---
 Preparing worktree (new branch 'feature/dash-9')
 Preparing worktree (new branch 'feature/dash-9')
-<SANDBOX>/opt/bin/becket: line 419: files[@]: unbound variable
 
 # manifest: dash-9
 {
@@ -199,7 +203,7 @@ Preparing worktree (new branch 'feature/dash-9')
   "created": "<DATE>",
   "description": "",
   "repos": {
-    "service-admin": {
+    "admin": {
       "branch": "feature/dash-9",
       "base": "main"
     },
@@ -215,10 +219,10 @@ $ becket list
 [exit 0]
 --- stdout ---
 
-ID        REPOS                 CREATED      DESCRIPTION
-────────  ────────────────────  ──────────   ──────────────────────────────
-dash-9    service-admin,service   <DATE>   
-proj-42   service,service-admin   <DATE>   real-time dark mode
+ID        REPOS           CREATED      DESCRIPTION
+────────  ──────────────  ──────────   ──────────────────────────────
+dash-9    admin,service   <DATE>   
+proj-42   service,admin   <DATE>   real-time dark mode
 
 
 ### teardown removes worktrees and (with --delete-branches) the branches
@@ -229,8 +233,8 @@ $ becket teardown proj-42 --delete-branches
 ▸ Removing worktree: service
 ▸ Deleting branch: feature/proj-42-dark-mode from service
 Deleted branch feature/proj-42-dark-mode (was <SHA>).
-▸ Removing worktree: service-admin
-▸ Deleting branch: feature/proj-42-dark-mode from service-admin
+▸ Removing worktree: admin
+▸ Deleting branch: feature/proj-42-dark-mode from admin
 Deleted branch feature/proj-42-dark-mode (was <SHA>).
 ▸ Removed workspace: proj-42
 
@@ -246,15 +250,15 @@ main
 ./dash-9
 ./dash-9/.becket.json
 ./dash-9/AGENTS.md
+./dash-9/admin
 ./dash-9/docs
 ./dash-9/service
-./dash-9/service-admin
 ./dash-9/workspace.schema.json
 
 $ becket list
 [exit 0]
 --- stdout ---
 
-ID       REPOS                 CREATED      DESCRIPTION
-───────  ────────────────────  ──────────   ──────────────────────────────
-dash-9   service-admin,service   <DATE>   
+ID       REPOS           CREATED      DESCRIPTION
+───────  ──────────────  ──────────   ──────────────────────────────
+dash-9   admin,service   <DATE>   

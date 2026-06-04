@@ -3,7 +3,7 @@
 #   create --base, teardown (keep branches), add (id detected from CWD).
 source "$(dirname "$0")/../lib/harness.sh"
 
-setup_platform service service-admin
+setup_platform service admin
 _git -C "$PLATFORM/service" branch develop   # an alternate base branch to target
 
 note "create --base overrides the base branch the worktree is cut from"
@@ -18,5 +18,5 @@ show_tree
 note "add with the workspace id detected from the current directory (single-arg form)"
 run_becket create multi --repos service >/dev/null 2>&1
 cd "$(wt multi service)"
-run_becket add service-admin
+run_becket add admin
 show_manifest multi

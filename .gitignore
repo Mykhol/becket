@@ -1,0 +1,7 @@
+# Go build output
+/becket
+/becket-go
+*.test
+
+# Local scratch
+/dist/
