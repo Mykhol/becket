@@ -1,25 +1,40 @@
 # becket
 
-Cross-repo worktree CLI. Create feature-scoped workspaces containing coordinated git worktrees across multiple repositories.
+Cross-repo git-worktree workspaces. Create feature-scoped workspaces that group
+coordinated git worktrees — one per repo, all on the same feature branch — across
+multiple repositories.
 
-## Quick Start
+## Install
 
 ```bash
-# Install
-make install   # copies to ~/.local/bin/becket
+# Go toolchain
+go install github.com/Mykhol/becket@latest
 
-# Initialize in your platform directory (where your repos live)
+# From source (builds + installs to ~/.local/bin/becket, with completions)
+git clone https://github.com/Mykhol/becket && cd becket && make install
+```
+
+Prebuilt binaries (macOS/Linux, amd64/arm64) are attached to each
+[release](https://github.com/Mykhol/becket/releases/latest).
+
+becket is a single static binary; the only runtime requirement is **Git 2.15+**.
+`becket dev` additionally needs `tmux`, and `becket pr` needs the `gh` CLI.
+
+## Quick start
+
+```bash
+# Initialize in your platform directory (where your repo clones live)
 cd ~/Developer/Platform
 becket init
 
 # Create a feature workspace
 becket create proj-42 --desc "dark mode"
 
-# Check status
+# Check status across all repos
 becket status proj-42
 
 # Add another repo later
-becket add proj-42 Service-Admin
+becket add proj-42 api
 
 # List all workspaces
 becket list
@@ -28,45 +43,70 @@ becket list
 becket teardown proj-42 --delete-branches
 ```
 
-## How It Works
+To make `becket shell` cd into a workspace, add to your shell rc:
 
-Becket manages **workspaces** — directories that group git worktrees from multiple repos under a single feature identifier. Each workspace gets:
+```bash
+eval "$(becket shell-init)"
+```
 
-- A worktree per selected repo, all on the same feature branch
-- A shared `docs/` folder for API contracts, notes, etc.
-- A `.becket.json` manifest tracking the workspace state
+## How it works
 
-## Config
+becket manages **workspaces** — directories that group git worktrees from
+multiple repos under one feature identifier. Each workspace gets:
 
-Run `becket init` in a directory containing your repo clones. It creates a `.becket.json`:
+- a worktree per selected repo, all on the same feature branch,
+- a shared `docs/` folder for specs, notes, and contracts,
+- a `.becket.json` manifest tracking workspace state,
+- a generated `AGENTS.md` with context for AI agents.
+
+Workspaces can be **stacked** (`--stacked-on`) so a feature builds on top of
+another's branches, with `becket restack` to rebase onto the parent's tips.
+
+## Configuration
+
+`becket init` scans the current directory for git repos and writes
+`.becket/settings.json`:
 
 ```json
 {
-  "workspacesDir": "~/workspaces",
+  "$schema": "./settings.schema.json",
   "repos": {
-    "ml-service": { "path": "./ml-service", "defaultBase": "main" },
-    "service-fe-v2": { "path": "./service-fe-v2", "defaultBase": "main" }
+    "web": { "path": "./web", "defaultBase": "main" },
+    "api": { "path": "./api", "defaultBase": "main" }
   },
   "branchPrefix": "feature/"
 }
 ```
 
+Optional keys: per-repo `setup`/`dev`/`env` (for `becket setup`/`dev`),
+top-level `files` (copied into each workspace), `docker`, and `session`.
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `becket init` | Create `.becket.json` in current directory |
-| `becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH]` | Create feature workspace |
-| `becket list` | List all active workspaces |
-| `becket status [id]` | Show branch status across repos |
-| `becket teardown <id> [--delete-branches]` | Remove worktrees + workspace |
-| `becket add <id> <repo>` | Add a repo to existing workspace |
+| `init` | Scan CWD for repos, write `.becket/settings.json` |
+| `create <id> [--desc] [--repos] [--base] [--stacked-on] [--setup]` | Create a workspace + worktrees |
+| `adopt <id> [--repos] [--base] [--setup]` | Wrap existing branches into a new workspace |
+| `add [id] <repo>` | Add a repo to an existing workspace |
+| `list [--output json]` | List active workspaces |
+| `status [id] [--output json]` / `status set\|clear` | Branch status; set/clear a status note |
+| `desc [id] <text>` | Set a workspace description |
+| `sync [id]` / `restack [id]` | Rebase onto base / onto a stack parent's tips |
+| `push [id]` / `pr [id]` / `log [id]` | Push branches / open PRs (gh) / show commits |
+| `setup [id]` / `dev [id] [--detach]` | Run setup commands / start dev env (tmux) |
+| `shell [id]` / `shell-init` | Print workspace path / shell integration |
+| `teardown [id] [--delete-branches]` | Remove worktrees + workspace |
+| `upgrade` / `stats` | Migrate config/schemas / local usage stats |
 
-## Requirements
+## Development
 
-- Bash 4+
-- Git 2.15+ (worktree support)
-- Python 3 (for JSON handling; available by default on macOS and most Linux)
+```bash
+make test       # characterization suite against the bash reference (bin/becket)
+make test-go    # same suite against the Go binary
+```
+
+See [`tests/README.md`](tests/README.md) for the cross-binary characterization suite.
 
 ## License
 

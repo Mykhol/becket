@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l internal main.go)"
+          if [ -n "$unformatted" ]; then echo "needs gofmt:"; echo "$unformatted"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      # Characterization suite against the Go binary. The two rebase-conflict
+      # scenarios capture git's own message text (version-sensitive), so they're
+      # excluded here and run separately as informational.
+      - name: characterization suite
+        run: make test-go
+        env:
+          BECKET_SKIP: conflict
+
+      - name: conflict scenarios (informational)
+        run: BECKET_BIN="$PWD/becket-go" ./tests/run.sh conflict
+        continue-on-error: true

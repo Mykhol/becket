@@ -1,0 +1,65 @@
+# GoReleaser config — cross-compiled binaries + checksums, attached to the
+# GitHub release on tag push (see .github/workflows/release.yml).
+# Validate locally with: goreleaser check  /  goreleaser build --snapshot --clean
+version: 2
+
+project_name: becket
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: becket
+    main: .
+    binary: becket
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Version is read from main.version, stamped from the git tag.
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: becket
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - completions/_becket
+      - completions/becket.bash
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  use: github
+  sort: asc
+
+# Owner/name are inferred from the git remote (Mykhol/becket).
+release:
+  draft: false
+  prerelease: auto
+
+# Homebrew tap (deferred): uncomment once the public tap repo exists and a
+# cross-repo token (HOMEBREW_TAP_GITHUB_TOKEN) is configured.
+# brews:
+#   - repository:
+#       owner: Mykhol
+#       name: homebrew-tap
+#     homepage: "https://github.com/Mykhol/becket"
+#     description: "Cross-repo git-worktree workspaces"
+#     install: |
+#       bin.install "becket"
+#       bash_completion.install "completions/becket.bash" => "becket"
+#       zsh_completion.install "completions/_becket"

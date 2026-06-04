@@ -135,6 +135,12 @@ for file in "$SCENARIO_DIR"/*.sh; do
   [ -e "$file" ] || continue
   name="$(basename "$file" .sh)"
   if [ -n "$FILTER" ]; then case "$name" in *"$FILTER"*) ;; *) continue ;; esac; fi
+  # BECKET_SKIP: space-separated substrings to exclude (e.g. CI skipping the
+  # git-version-sensitive conflict scenarios). Inclusion FILTER still applies.
+  if [ -n "${BECKET_SKIP:-}" ]; then
+    skip=0; for pat in $BECKET_SKIP; do case "$name" in *"$pat"*) skip=1 ;; esac; done
+    [ "$skip" -eq 1 ] && { echo "skip     $name"; continue; }
+  fi
   ran=$((ran+1))
   run_one "$file"
 done
