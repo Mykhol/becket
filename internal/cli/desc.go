@@ -8,10 +8,17 @@ import (
 
 func newDescCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "desc [id] <text>",
-		Short:              "Set workspace description",
+		Use:   "desc [id] <text>",
+		Short: "Set workspace description",
+		Long: `Set a workspace's description. The id is detected from the current
+directory when only the text is given.`,
 		DisableFlagParsing: true, // description text may contain leading dashes
-		Run:                func(_ *cobra.Command, args []string) { runDesc(args) },
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
+			runDesc(args)
+		},
 	}
 }
 

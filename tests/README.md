@@ -2,41 +2,31 @@
 
 A black-box **golden-master** suite that locks the *observable* behaviour of
 `becket` — stdout, stderr, exit codes, and the on-disk state each command
-produces. Its job is to be the **migration contract**: capture exactly what the
-current bash script does today, then prove a reimplementation (the planned
-Go + Cobra port) behaves identically by running the *same* suite against it.
-
-> Phase 1 of the migration plan. These are the first tests `becket` has ever
-> had — they're worth keeping regardless of whether the migration proceeds.
+produces. It began as the **migration contract** (prove the Go + Cobra rewrite
+matched the original bash script byte-for-byte); that migration is complete, so
+it now serves as a **regression suite for the Go binary**, which is the source of
+truth.
 
 ## Running
 
 ```bash
-tests/run.sh                 # run all scenarios, diff against goldens
+make test                    # build the Go binary and run the suite
 tests/run.sh --update        # (re)generate goldens from current behaviour
 tests/run.sh --keep          # keep sandboxes for debugging (prints their paths)
 tests/run.sh lifecycle       # only scenarios whose name matches the filter
 ```
 
-Exit status is `0` when every scenario matches its golden, `1` otherwise (with a
-unified diff per failure).
+The runner drives whatever `$BECKET_BIN` points at as a black box; `make test`
+builds `becket-go` and points it there. Exit status is `0` when every scenario
+matches its golden, `1` otherwise (with a unified diff per failure).
 
-### Validating the future Go binary
-
-The suite drives whatever `$BECKET_BIN` points at, as a black box:
-
-```bash
-BECKET_BIN=./becket-go tests/run.sh
-```
-
-A self-contained binary is run in place (no staging — see below). Same script,
-same args, same goldens: a green run is the equivalence proof.
+> The original bash implementation at `bin/becket` is a frozen reference and is
+> no longer held to this suite.
 
 ## Requirements
 
-`bash` (3.2+, the macOS system bash), `git`, `python3` (becket uses it for JSON),
-and `perl` (used by the runner for normalization). No `bats` or other test
-framework — the runner is plain bash.
+The runner is plain bash and needs `git` plus `perl` (for output normalization).
+The Go binary under test needs only `git`. No `bats` or other test framework.
 
 ## How it works
 
@@ -112,30 +102,19 @@ have multiple branches covered.
 - **`status` of a missing worktree** (worktree dir deleted out from under a
   workspace) — minor branch, not yet exercised.
 
-## Cross-binary contract
+## Source of truth & history
 
-The suite drives whatever `$BECKET_BIN` points at, and the goldens are kept
-green against **both** the original bash script and the Go + Cobra port, so a
-single golden set proves behavioural equivalence:
-
-```bash
-./tests/run.sh                          # bash (bin/becket)
-BECKET_BIN=./becket-go ./tests/run.sh   # Go port
-```
+The goldens track the **Go binary**. During the migration they were kept green
+against both the bash script and the Go port (a single golden set proving
+equivalence); now that the Go binary is the product, the goldens follow it and
+`bin/becket` is no longer tested against them.
 
 The runner stages an install layout per sandbox, so the install prefix (used by
-`shell-init`) normalizes identically for either binary.
-
-### Fixed during the port — golden ≠ gospel
-
-`create`/`adopt` used to exit `1` even on success when the config had no `files`
-array — `for file in "${files[@]}"` over an empty array under `set -u` is an
-"unbound variable" error on **bash 3.2**. This was fixed in **both** the bash
-script (empty-array guard, `bin/becket:588`/`:781`) and the Go port (which never
-had the bug), and the affected goldens now record the corrected exit-0 behaviour.
+`shell-init`) normalizes deterministically.
 
 ### Git-version sensitivity
 
 The conflict scenarios (`14`, `15`) capture **git's own** rebase and hint text,
 which changes between git versions. If you upgrade git and those two go red with
-only wording differences, `--update` and eyeball the diff.
+only wording differences, `--update` and eyeball the diff. (CI excludes them via
+`BECKET_SKIP=conflict` and runs them informationally.)

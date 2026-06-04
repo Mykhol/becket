@@ -16,10 +16,22 @@ const adoptUsage = "Usage: becket adopt <id> [--repos r1,r2] [--base BRANCH] [--
 
 func newAdoptCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "adopt <id> [options]",
-		Short:              "Adopt existing branches into a new workspace",
+		Use:   "adopt <id> [options]",
+		Short: "Adopt existing branches into a new workspace",
+		Long: `Wrap each repo's currently checked-out branch into a new workspace
+(vs. create, which starts fresh branches). Dirty repos are auto-stashed.
+
+Options:
+  --repos r1,r2   Repos to include (default: all configured repos)
+  --base BRANCH   Override the base branch for all repos
+  --setup         Run setup commands after adopting`,
 		DisableFlagParsing: true,
-		Run:                func(_ *cobra.Command, args []string) { runAdopt(args) },
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
+			runAdopt(args)
+		},
 	}
 }
 

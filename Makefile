@@ -30,12 +30,9 @@ uninstall:
 	@rm -f $(PREFIX)/share/bash-completion/completions/becket
 	@echo "Removed becket from $(PREFIX)/bin/becket"
 
-# Run the characterization suite against the bash script (test) or the Go build
-# (test-go). The Go test binary is stamped with the goldens' version so the
-# `becket version` scenario matches.
-test:
-	@./tests/run.sh
-test-go:
+# Run the characterization suite against the Go binary (the source of truth),
+# built at the goldens' version so the `becket version` scenario matches.
+test test-go:
 	@go build -ldflags "-X main.version=$(BECKET_VERSION)" -o becket-go .
 	@BECKET_BIN=$(PWD)/becket-go ./tests/run.sh
 

@@ -38,10 +38,18 @@ type statusWS struct {
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "status [id]",
-		Short:              "Show branch status across repos",
+		Use:   "status [id]",
+		Short: "Show branch status across repos",
+		Long: `Show branch, clean/dirty state, ahead/behind, and last-commit time per repo.
+
+  status [id] [--output json]    Show status (id detected from CWD if omitted)
+  status set <text> [--by who]   Set a workspace status note
+  status clear [id]              Clear the status note`,
 		DisableFlagParsing: true, // route set/clear before any flag handling
-		Run: func(_ *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
 			if len(args) > 0 {
 				switch args[0] {
 				case "set":

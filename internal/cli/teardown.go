@@ -13,10 +13,20 @@ import (
 
 func newTeardownCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "teardown [id] [options]",
-		Short:              "Remove worktrees + workspace",
+		Use:   "teardown [id] [options]",
+		Short: "Remove worktrees + workspace",
+		Long: `Remove a workspace's worktrees and its directory. The id is detected from
+the current directory when omitted.
+
+Options:
+  --delete-branches   Also delete the feature branches`,
 		DisableFlagParsing: true,
-		Run:                func(_ *cobra.Command, args []string) { runTeardown(args) },
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
+			runTeardown(args)
+		},
 	}
 }
 

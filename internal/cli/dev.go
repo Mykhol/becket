@@ -13,10 +13,20 @@ import (
 
 func newDevCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "dev [id] [--detach]",
-		Short:              "Start dev environment (docker + tmux)",
+		Use:   "dev [id] [--detach]",
+		Short: "Start dev environment (docker + tmux)",
+		Long: `Start each repo's configured dev command in a tmux session (and docker
+services, if configured).
+
+Options:
+  --detach   Don't attach to the session (automatic when there's no TTY)`,
 		DisableFlagParsing: true,
-		Run:                func(_ *cobra.Command, args []string) { runDev(args) },
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
+			runDev(args)
+		},
 	}
 }
 

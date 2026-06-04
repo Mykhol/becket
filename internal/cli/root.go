@@ -19,6 +19,23 @@ var schemas embed.FS
 // appVersion is the build-stamped version string (e.g. "0.1.0").
 var appVersion string
 
+// command groups for the help listing (traditional CLI layout).
+var commandGroups = []*cobra.Group{
+	{ID: "platform", Title: "Platform Commands:"},
+	{ID: "workspace", Title: "Workspace Commands:"},
+	{ID: "develop", Title: "Develop Commands:"},
+	{ID: "ship", Title: "Sync & Ship Commands:"},
+}
+
+// groupOf maps each command name to its help group.
+var groupOf = map[string]string{
+	"init": "platform", "list": "platform", "stats": "platform", "upgrade": "platform",
+	"create": "workspace", "adopt": "workspace", "add": "workspace", "teardown": "workspace",
+	"shell": "develop", "shell-init": "develop", "dev": "develop", "setup": "develop",
+	"status": "ship", "desc": "ship", "log": "ship", "sync": "ship",
+	"restack": "ship", "push": "ship", "pr": "ship",
+}
+
 // Execute builds the command tree and runs it. version and schemaFS are passed
 // from package main (the latter embedded at the module root).
 func Execute(version string, schemaFS embed.FS) {
@@ -35,23 +52,23 @@ func Execute(version string, schemaFS embed.FS) {
 
 	var showVersion bool
 	root := &cobra.Command{
-		Use:           "becket",
-		Short:         "Cross-repo worktree CLI",
+		Use:   "becket",
+		Short: "Cross-repo git-worktree workspaces",
+		Long: "becket — cross-repo git-worktree workspaces.\n\n" +
+			"Create feature-scoped workspaces of coordinated git worktrees across\n" +
+			"multiple repositories, all on a shared feature branch.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Run: func(_ *cobra.Command, args []string) {
-			switch {
-			case showVersion:
+		Run: func(c *cobra.Command, _ []string) {
+			if showVersion {
 				printVersion()
-			case len(args) > 0:
-				render.Die("Unknown command: %s. Run 'becket help' for usage.", args[0])
-			default:
-				printHelp()
+				return
 			}
+			_ = c.Help()
 		},
 	}
 	root.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version")
-	root.SetHelpFunc(func(_ *cobra.Command, _ []string) { printHelp() })
+	root.AddGroup(commandGroups...)
 
 	root.AddCommand(
 		newInitCmd(),
@@ -75,6 +92,11 @@ func Execute(version string, schemaFS embed.FS) {
 		newUpgradeCmd(),
 		newDevCmd(),
 	)
+	for _, c := range root.Commands() {
+		if g, ok := groupOf[c.Name()]; ok {
+			c.GroupID = g
+		}
+	}
 
 	if err := root.Execute(); err != nil {
 		// Reformat Cobra's unknown-command error to match the bash dispatch.
@@ -92,4 +114,16 @@ func Execute(version string, schemaFS embed.FS) {
 
 func printVersion() {
 	fmt.Printf("becket v%s\n", appVersion)
+}
+
+// helpRequested returns true if args contain -h/--help; used by commands that
+// parse their own flags (DisableFlagParsing) to still honor --help.
+func helpRequested(cmd *cobra.Command, args []string) bool {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			_ = cmd.Help()
+			return true
+		}
+	}
+	return false
 }

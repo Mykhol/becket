@@ -16,10 +16,24 @@ const createUsage = "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--
 
 func newCreateCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "create <id> [options]",
-		Short:              "Create workspace + worktrees",
+		Use:   "create <id> [options]",
+		Short: "Create workspace + worktrees",
+		Long: `Create a workspace and a git worktree per selected repo, all on a new
+shared feature branch.
+
+Options:
+  --desc TEXT       Description (slugified into the branch name)
+  --repos r1,r2     Repos to include (default: all configured repos)
+  --base BRANCH     Override the base branch for all repos
+  --stacked-on ID   Stack on another workspace (its branches become the base)
+  --setup           Run setup commands after creating`,
 		DisableFlagParsing: true,
-		Run:                func(_ *cobra.Command, args []string) { runCreate(args) },
+		Run: func(cmd *cobra.Command, args []string) {
+			if helpRequested(cmd, args) {
+				return
+			}
+			runCreate(args)
+		},
 	}
 }
 
