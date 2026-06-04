@@ -32,8 +32,8 @@ feature/proj-42-dark-mode
 main
 
 # worktrees: service
-<SANDBOX>/platform/.becket/workspaces/proj-42/service  <SHA> [feature/proj-42-dark-mode]
-<SANDBOX>/platform/service                             <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/proj-42/service <SHA> [feature/proj-42-dark-mode]
+<SANDBOX>/platform/service <SHA> [main]
 
 ### list shows the new workspace
 
@@ -243,8 +243,8 @@ feature/dash-9
 main
 
 # worktrees: service
-<SANDBOX>/platform/.becket/workspaces/dash-9/service  <SHA> [feature/dash-9]
-<SANDBOX>/platform/service                            <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/dash-9/service <SHA> [feature/dash-9]
+<SANDBOX>/platform/service <SHA> [main]
 
 # workspaces tree
 ./dash-9

@@ -44,8 +44,8 @@ Preparing worktree (checking out 'feature/wip')
 
 
 # worktrees: service
-<SANDBOX>/platform/.becket/workspaces/rescued/service  <SHA> [feature/wip]
-<SANDBOX>/platform/service                             <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/wip]
+<SANDBOX>/platform/service <SHA> [main]
 
 ### the uncommitted change was restored into the worktree
 

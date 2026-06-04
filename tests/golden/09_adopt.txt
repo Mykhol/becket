@@ -44,5 +44,5 @@ feature/existing-work
 main
 
 # worktrees: service
-<SANDBOX>/platform/.becket/workspaces/rescued/service  <SHA> [feature/existing-work]
-<SANDBOX>/platform/service                             <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/existing-work]
+<SANDBOX>/platform/service <SHA> [main]

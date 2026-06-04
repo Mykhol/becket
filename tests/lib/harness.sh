@@ -202,12 +202,14 @@ show_branches() {
   echo
 }
 
-# show_worktrees <repo> — `git worktree list` for a platform repo (paths get
-# normalised away by the runner).
+# show_worktrees <repo> — `git worktree list` for a platform repo. The column
+# padding in this output is git-version-dependent, so squeeze runs of spaces to a
+# single space for portability (the lines have no meaningful internal spacing);
+# paths get normalised away by the runner.
 show_worktrees() {
   local repo="$1"
   _hr "worktrees: $repo"
-  git -C "$PLATFORM/$repo" worktree list 2>&1 | LC_ALL=C sort
+  git -C "$PLATFORM/$repo" worktree list 2>&1 | tr -s ' ' | LC_ALL=C sort
   echo
 }
 

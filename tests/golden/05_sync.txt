@@ -25,8 +25,8 @@ From <SANDBOX>/origins/service
 Successfully rebased and updated refs/heads/feature/ws.
 
 # worktrees: service
-<SANDBOX>/platform/.becket/workspaces/ws/service  <SHA> [feature/ws]
-<SANDBOX>/platform/service                        <SHA> [main]
+<SANDBOX>/platform/.becket/workspaces/ws/service <SHA> [feature/ws]
+<SANDBOX>/platform/service <SHA> [main]
 
 ### sync refuses a stacked workspace and points at restack
 
