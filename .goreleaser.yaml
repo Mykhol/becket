@@ -33,8 +33,7 @@ archives:
     files:
       - LICENSE
       - README.md
-      - completions/_becket
-      - completions/becket.bash
+      # completions are generated at runtime via `becket completion` / shell-init
 
 checksum:
   name_template: "checksums.txt"
