@@ -40,6 +40,9 @@ var groupOf = map[string]string{
 // from package main (the latter embedded at the module root).
 func Execute(version string, schemaFS embed.FS) {
 	appVersion = version
+	if appVersion == "" { // never print "becket v" with no version
+		appVersion = "dev"
+	}
 	schemas = schemaFS
 
 	// Usage logging fires for every invocation before dispatch, matching the

@@ -1,6 +1,9 @@
 PREFIX  ?= $(HOME)/.local
 # Version stamped from git (strip the leading v); override with `make install VERSION=…`.
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
+# Fall back to "dev" if empty (e.g. building outside a git checkout) — the
+# pipeline can't use `|| echo dev` because the trailing `sed` always succeeds.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
+VERSION := $(or $(strip $(VERSION)),dev)
 
 # Build the Go binary (becket-go) with the version baked in via ldflags.
 build:
