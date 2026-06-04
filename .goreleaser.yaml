@@ -49,6 +49,9 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  # Replace existing assets so re-running a release (e.g. a re-pushed tag) is
+  # idempotent instead of failing with "asset already_exists".
+  mode: replace
 
 # Homebrew tap (deferred): uncomment once the public tap repo exists and a
 # cross-repo token (HOMEBREW_TAP_GITHUB_TOKEN) is configured.
