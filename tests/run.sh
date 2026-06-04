@@ -75,7 +75,7 @@ normalize() {
     s/\d{4}-\d{2}-\d{2}/<DATE>/g;                        # bare dates
     s/\b\d+ (?:second|minute|hour|day|week|month|year)s? ago\b/<RELTIME>/g;
     s/\b\d+[smhdwy] ago\b/<RELTIME>/g;                   # git short relative ("335w ago")
-    s/becket v\S+/becket v<VERSION>/g;                   # version string (semver, git-describe, or sha)
+    s/^becket v\S+/becket v<VERSION>/;                   # version output line (semver/git-describe/sha), not the "$ becket version" echo
     s/\b[0-9a-f]{7,40}\b/<SHA>/g;                        # git object ids
   '
 }
