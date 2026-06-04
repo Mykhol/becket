@@ -22,9 +22,9 @@ TESTS="$ROOT/tests"
 SCENARIO_DIR="$TESTS/scenarios"
 GOLDEN_DIR="$TESTS/golden"
 
-# The binary under test. Defaults to the bash script in this repo; override to
-# point the identical suite at the Go build once it exists.
-BECKET_BIN="${BECKET_BIN:-$ROOT/bin/becket}"
+# The binary under test. Defaults to the Go build; `make test` builds it first.
+# Override BECKET_BIN to run the suite against any other becket binary.
+BECKET_BIN="${BECKET_BIN:-$ROOT/becket-go}"
 case "$BECKET_BIN" in /*) ;; *) BECKET_BIN="$(cd "$(dirname "$BECKET_BIN")" && pwd)/$(basename "$BECKET_BIN")" ;; esac
 
 UPDATE=0
@@ -41,15 +41,14 @@ for arg in "$@"; do
 done
 
 if [ ! -x "$BECKET_BIN" ]; then
-  echo "error: BECKET_BIN not executable: $BECKET_BIN" >&2
+  echo "error: becket binary not found at $BECKET_BIN" >&2
+  echo "       run 'make test' (builds becket-go) or set BECKET_BIN." >&2
   exit 2
 fi
 
-# Staging: reproduce the `make install` layout ($SANDBOX/opt/{bin,share/becket})
-# inside each sandbox and run the binary-under-test from there. This gives a
-# stable, normalizable install prefix (so shell-init output matches across the
-# bash and Go binaries), lets the bash script find its schema dir, and exercises
-# the schema-copy paths. A self-contained binary (Go) ignores the staged schemas.
+# Staging: run the binary-under-test from a per-sandbox install layout
+# ($SANDBOX/opt/bin/becket) so paths normalize deterministically. The Go binary
+# is self-contained (schemas embedded); the staged schema dir is harmless.
 export BECKET_STAGE=1
 export BECKET_SCHEMA_SRC="$ROOT/schema"
 
@@ -76,6 +75,7 @@ normalize() {
     s/\d{4}-\d{2}-\d{2}/<DATE>/g;                        # bare dates
     s/\b\d+ (?:second|minute|hour|day|week|month|year)s? ago\b/<RELTIME>/g;
     s/\b\d+[smhdwy] ago\b/<RELTIME>/g;                   # git short relative ("335w ago")
+    s/becket v[0-9]\S*/becket v<VERSION>/g;              # version string (git-describe)
     s/\b[0-9a-f]{7,40}\b/<SHA>/g;                        # git object ids
   '
 }

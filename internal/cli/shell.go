@@ -3,8 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -37,12 +35,10 @@ func newShellInitCmd() *cobra.Command {
 	}
 }
 
-// printShellInit mirrors cmd_shell_init: a wrapper function that turns
-// `becket shell` into a cd, plus completion bootstrap. The install prefix is
-// derived from the executable location (dir, minus a trailing /bin).
+// printShellInit emits a wrapper that turns `becket shell` into a cd, plus
+// loads Cobra-generated completions for the current shell.
 func printShellInit() {
-	prefix := installPrefix()
-	const wrapper = `becket() {
+	fmt.Print(`becket() {
   if [[ "$1" == "shell" ]]; then
     local _becket_dir
     _becket_dir="$(command becket shell "${@:2}")" || return $?
@@ -51,26 +47,12 @@ func printShellInit() {
     command becket "$@"
   fi
 }
-`
-	fmt.Print(wrapper)
-	fmt.Printf(`if [[ -n "$ZSH_VERSION" ]]; then
-  fpath=("%s/share/zsh/site-functions" $fpath)
-  autoload -Uz _becket 2>/dev/null && compdef _becket becket 2>/dev/null
+if [[ -n "$ZSH_VERSION" ]]; then
+  source <(command becket completion zsh)
 elif [[ -n "$BASH_VERSION" ]]; then
-  [[ -f "%s/share/bash-completion/completions/becket" ]] && source "%s/share/bash-completion/completions/becket"
+  source <(command becket completion bash)
 fi
-`, prefix, prefix, prefix)
-}
-
-// installPrefix resolves $PREFIX from the running binary's location: dirname,
-// with a trailing /bin removed (so <prefix>/bin/becket -> <prefix>).
-func installPrefix() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	dir := filepath.Dir(exe)
-	return strings.TrimSuffix(dir, "/bin")
+`)
 }
 
 func arg0(args []string) string {

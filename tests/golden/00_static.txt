@@ -3,17 +3,17 @@
 $ becket version
 [exit 0]
 --- stdout ---
-becket v0.2.0
+becket v<VERSION>
 
 $ becket --version
 [exit 0]
 --- stdout ---
-becket v0.2.0
+becket v<VERSION>
 
 $ becket -v
 [exit 0]
 --- stdout ---
-becket v0.2.0
+becket v<VERSION>
 
 ### help (explicit, and as the default command)
 
@@ -132,10 +132,9 @@ becket() {
   fi
 }
 if [[ -n "$ZSH_VERSION" ]]; then
-  fpath=("<SANDBOX>/opt/share/zsh/site-functions" $fpath)
-  autoload -Uz _becket 2>/dev/null && compdef _becket becket 2>/dev/null
+  source <(command becket completion zsh)
 elif [[ -n "$BASH_VERSION" ]]; then
-  [[ -f "<SANDBOX>/opt/share/bash-completion/completions/becket" ]] && source "<SANDBOX>/opt/share/bash-completion/completions/becket"
+  source <(command becket completion bash)
 fi
 
 ### unknown command is rejected

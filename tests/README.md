@@ -20,8 +20,8 @@ The runner drives whatever `$BECKET_BIN` points at as a black box; `make test`
 builds `becket-go` and points it there. Exit status is `0` when every scenario
 matches its golden, `1` otherwise (with a unified diff per failure).
 
-> The original bash implementation at `bin/becket` is a frozen reference and is
-> no longer held to this suite.
+> The original bash implementation has been removed (it lives in git history
+> through v0.2.0); the Go binary is now the sole implementation.
 
 ## Requirements
 
@@ -37,11 +37,9 @@ The Go binary under test needs only `git`. No `bats` or other test framework.
 - **Offline git.** Fixtures build each repo with a local **bare repo as its
   `origin`**, so `worktree`, `fetch`, `rebase`, `push`, and `log origin/..`
   all work exactly as against a real remote, with zero network.
-- **Install staging.** When testing this repo's `bin/becket`, the runner stages
-  a `make install` layout (`$SANDBOX/opt/{bin,share/becket}`) so the script can
-  locate its schema dir like a real install. This also exercises the
-  schema-copy paths in `init`/`upgrade` that are otherwise dead when running
-  uninstalled. (Skipped when `$BECKET_BIN` is overridden.)
+- **Install staging.** The runner copies the binary-under-test into a per-sandbox
+  `$SANDBOX/opt/bin/becket` and runs it from there, so any path it emits
+  normalizes deterministically.
 - **One transcript per scenario.** A scenario drives a sequence of commands via
   `run_becket` and interleaves state snapshots (`show_manifest`, `show_tree`,
   `show_branches`, `show_worktrees`, `show_settings`). Its full stdout is the
@@ -106,11 +104,8 @@ have multiple branches covered.
 
 The goldens track the **Go binary**. During the migration they were kept green
 against both the bash script and the Go port (a single golden set proving
-equivalence); now that the Go binary is the product, the goldens follow it and
-`bin/becket` is no longer tested against them.
-
-The runner stages an install layout per sandbox, so the install prefix (used by
-`shell-init`) normalizes deterministically.
+equivalence); now that the migration is complete, the bash script has been
+removed and the goldens follow the Go binary alone.
 
 ### Git-version sensitivity
 

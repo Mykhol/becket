@@ -10,7 +10,7 @@ multiple repositories.
 # Go toolchain
 go install github.com/Mykhol/becket@latest
 
-# From source (builds + installs to ~/.local/bin/becket, with completions)
+# From source (builds + installs to ~/.local/bin/becket)
 git clone https://github.com/Mykhol/becket && cd becket && make install
 ```
 
@@ -102,11 +102,12 @@ top-level `files` (copied into each workspace), `docker`, and `session`.
 ## Development
 
 ```bash
-make test       # characterization suite against the bash reference (bin/becket)
-make test-go    # same suite against the Go binary
+make build      # build ./becket-go
+make test       # build and run the characterization suite
+make install    # build + install to ~/.local/bin/becket
 ```
 
-See [`tests/README.md`](tests/README.md) for the cross-binary characterization suite.
+See [`tests/README.md`](tests/README.md) for the characterization suite.
 
 ## License
 
