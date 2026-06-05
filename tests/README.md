@@ -102,9 +102,9 @@ multiple branches covered.
 
 ### Not covered
 
-- **`dev`** — requires `tmux` and a TTY; spawns a persistent session. Only
-  coverable by stubbing a fake `tmux` on `$PATH` (deliberately omitted — the
-  stub would make the test less faithful than it looks).
+- **`dev`** — runs long-running dev processes in the foreground and multiplexes
+  their output; not deterministically golden-testable (interleaved output, no
+  natural exit). Best verified by hand in a real workspace.
 - **`pr`** — requires the `gh` CLI and a real GitHub remote/auth; likewise only
   coverable with a fake `gh`.
 - **The interactive repo picker** in `create`/`adopt` — needs a real TTY on

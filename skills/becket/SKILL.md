@@ -66,7 +66,9 @@ that `AGENTS.md` when you start work inside a workspace.
 
 **Develop**
 - `becket setup [id]` — run each repo's configured setup commands.
-- `becket dev [id] [--detach]` — start the dev environment (docker + tmux).
+- `becket dev [id] [--repo NAME]` — run repos' `dev` commands in the foreground:
+  all at once with per-repo-prefixed output (Ctrl-C stops all), or just one with
+  `--repo`. Starts docker services first if configured.
 - `becket shell [id]` — print a workspace path; with `eval "$(becket shell-init)"`
   in the shell rc, `becket shell <id>` also `cd`s into it.
 

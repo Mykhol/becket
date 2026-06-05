@@ -20,6 +20,7 @@ var (
 	green  string
 	yellow string
 	red    string
+	dim    string
 	reset  string
 )
 
@@ -28,9 +29,13 @@ func init() {
 		green = "\033[0;32m"
 		yellow = "\033[0;33m"
 		red = "\033[0;31m"
+		dim = "\033[2m"
 		reset = "\033[0m"
 	}
 }
+
+// Dim wraps s in the dim style on a TTY (returns s unchanged otherwise).
+func Dim(s string) string { return dim + s + reset }
 
 func isTTY(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))

@@ -55,8 +55,7 @@ go install github.com/Mykhol/becket@latest
 git clone https://github.com/Mykhol/becket && cd becket && make install
 ```
 
-Requires **Git 2.15+** (`becket dev` also needs `tmux`; `becket pr` needs the
-[`gh`](https://cli.github.com) CLI).
+Requires **Git 2.15+** (`becket pr` needs the [`gh`](https://cli.github.com) CLI).
 
 ## Usage
 
@@ -122,7 +121,7 @@ Optional keys add per-repo `setup`/`dev`/`env` commands (for `becket setup` and
 | `sync [id]` | Rebase every repo onto its base branch |
 | `restack [id]` | Rebase a stacked workspace onto its parent's tips |
 | `push [id]` / `pr [id]` / `log [id]` | Push branches / open GitHub PRs / show commits |
-| `setup [id]` / `dev [id] [--detach]` | Run setup commands / start the dev environment |
+| `setup [id]` / `dev [id] [--repo NAME]` | Run setup commands / run repos' dev commands in the foreground |
 | `shell [id]` / `shell-init` | Print a workspace path / emit shell integration |
 | `teardown [id] [--delete-branches]` | Remove a workspace's worktrees (and branches) |
 | `upgrade` / `stats` | Migrate config & schemas / show local usage stats |

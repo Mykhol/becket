@@ -85,7 +85,7 @@ Workspace Commands:
   teardown    Remove worktrees + workspace
 
 Develop Commands:
-  dev         Start dev environment (docker + tmux)
+  dev         Run repos' dev commands (concurrently, in the foreground)
   setup       Run setup commands for workspace repos
   shell       Print workspace directory path (use with shell-init)
   shell-init  Output shell wrapper for eval (enables 'becket shell' as cd)
