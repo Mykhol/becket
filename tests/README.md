@@ -96,15 +96,17 @@ with `go test . -run TestScripts -update` and eyeball the diff.
 | `15_restack_conflict`| `restack` rebase conflict + resolution hints |
 | `16_discovery`       | `init` default-base detection (main vs master) |
 | `17_stack_fallback`  | stacked child where parent lacks a repo → base fallback warning |
+| `18_dev`             | `dev` (multiplexed run exits cleanly; `--repo` raw passthrough) |
 
-Every dispatched command is exercised **except `dev` and `pr`**, and most have
+Every dispatched command is exercised **except `pr`**, and most have
 multiple branches covered.
 
 ### Not covered
 
-- **`dev`** — runs long-running dev processes in the foreground and multiplexes
-  their output; not deterministically golden-testable (interleaved output, no
-  natural exit). Best verified by hand in a real workspace.
+- **`dev`** — the clean-exit and `--repo` paths are covered by `18_dev` (with a
+  fast-exiting dev command). The interactive parts — multiplexed output ordering
+  across several long-running processes and Ctrl-C shutdown — aren't
+  deterministically golden-testable; verify those by hand in a real workspace.
 - **`pr`** — requires the `gh` CLI and a real GitHub remote/auth; likewise only
   coverable with a fake `gh`.
 - **The interactive repo picker** in `create`/`adopt` — needs a real TTY on

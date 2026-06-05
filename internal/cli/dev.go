@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -153,34 +154,37 @@ func runDevMultiplexed(ws string, entries []devEntry) {
 			pr.Close()
 			continue
 		}
+		// Drop the parent's write end so the reader sees EOF once the child
+		// exits — otherwise reading would block forever and becket would hang.
+		pw.Close()
 		pMu.Lock()
 		procs = append(procs, cmd)
 		pMu.Unlock()
 
 		wg.Add(1)
-		go func(e devEntry, prefix string, cmd *exec.Cmd, pr, pw *os.File) {
+		go func(prefix string, cmd *exec.Cmd, pr *os.File) {
 			defer wg.Done()
 			sc := bufio.NewScanner(pr)
 			sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 			for sc.Scan() {
 				emit(prefix, sc.Text())
 			}
-			err := cmd.Wait()
-			pw.Close()
 			pr.Close()
-			if err != nil {
+			if err := cmd.Wait(); err != nil {
 				emit(prefix, render.Dim("exited: "+err.Error()))
 			} else {
 				emit(prefix, render.Dim("exited"))
 			}
-		}(e, prefix, cmd, pr, pw)
+		}(prefix, cmd, pr)
 	}
 
 	// On interrupt, terminate every process group, escalating to SIGKILL.
+	var interrupted atomic.Bool
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		interrupted.Store(true)
 		fmt.Println()
 		render.Info("Stopping...")
 		pMu.Lock()
@@ -201,6 +205,9 @@ func runDevMultiplexed(ws string, entries []devEntry) {
 	}()
 
 	wg.Wait()
+	if interrupted.Load() {
+		os.Exit(130) // 128 + SIGINT, the conventional "interrupted" status
+	}
 }
 
 // devPrefix builds a colored, padded "repo | " line prefix.

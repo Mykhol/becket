@@ -1,0 +1,55 @@
+# `becket dev` — concurrent foreground runner.
+#
+# Regression for the Ctrl-C/exit hang: the runner must close its child pipes so
+# it RETURNS once the dev processes exit, rather than blocking forever. Here the
+# dev command prints once and exits; if becket hung, this scenario would time
+# out instead of completing.
+#
+# One repo with a `dev` command:
+#   becket dev ws            multiplexes output, prefixed "svc | ", then exits
+#   becket dev ws --repo svc runs it raw (no prefix)
+
+mkdir origins
+
+# mk_repo svc (clone of a bare origin with one seeded commit on main)
+exec git init --bare origins/svc.git
+exec git clone origins/svc.git platform/svc
+cp readme platform/svc/README.md
+exec git -C platform/svc add README.md
+exec git -C platform/svc commit -m 'init svc'
+exec git -C platform/svc push -u origin main
+
+cd platform
+exec becket create ws --repos svc
+
+# ── all repos, multiplexed; must exit once the dev command exits ────────────────
+exec becket dev ws
+cp stdout out
+sanitize out
+cmp out $WORK/dev-all.stdout
+
+# ── single repo, raw passthrough (no prefix) ────────────────────────────────────
+exec becket dev ws --repo svc
+cp stdout out
+sanitize out
+cmp out $WORK/dev-one.stdout
+
+-- readme --
+# svc
+-- platform/.becket/settings.json --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "svc": { "path": "./svc", "defaultBase": "main", "dev": "echo hello-from-dev" }
+  },
+  "branchPrefix": "feature/"
+}
+-- dev-all.stdout --
+▸ Starting dev for 1 repos (Ctrl-C to stop):
+▸   svc → echo hello-from-dev
+
+svc | hello-from-dev
+svc | exited
+-- dev-one.stdout --
+▸ Running svc → echo hello-from-dev
+hello-from-dev
