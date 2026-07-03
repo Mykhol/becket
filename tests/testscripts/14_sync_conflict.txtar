@@ -22,10 +22,10 @@ exec becket init
 exec becket create ws --repos service
 
 # Feature branch and base branch edit the same line -> guaranteed rebase
-# conflict. The worktree lives at .becket/workspaces/ws/service.
-cp $WORK/feature $WORK/platform/.becket/workspaces/ws/service/README.md
-exec git -C $WORK/platform/.becket/workspaces/ws/service add README.md
-exec git -C $WORK/platform/.becket/workspaces/ws/service commit -m 'feat: rewrite readme'
+# conflict. The worktree lives at workspaces/ws/service.
+cp $WORK/feature $WORK/platform/workspaces/ws/service/README.md
+exec git -C $WORK/platform/workspaces/ws/service add README.md
+exec git -C $WORK/platform/workspaces/ws/service commit -m 'feat: rewrite readme'
 
 exec git -C $WORK/platform/service checkout main
 cp $WORK/mainver $WORK/platform/service/README.md

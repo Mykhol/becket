@@ -163,9 +163,12 @@ func TestLoad_DerivesPathsAndSettings(t *testing.T) {
 	}
 	// WorkspacesDir is derived purely from p.Dir, so assert that relationship
 	// directly rather than resolving symlinks (the dir does not exist on disk).
-	wantWorkspaces := filepath.Join(p.Dir, ".becket", "workspaces")
+	wantWorkspaces := filepath.Join(p.Dir, "workspaces")
 	if p.WorkspacesDir != wantWorkspaces {
 		t.Errorf("WorkspacesDir = %q, want %q", p.WorkspacesDir, wantWorkspaces)
+	}
+	if p.LegacyWorkspacesDir != "" {
+		t.Errorf("LegacyWorkspacesDir = %q, want empty (no legacy dir on disk)", p.LegacyWorkspacesDir)
 	}
 	if !p.HasSchema {
 		t.Errorf("HasSchema = false, want true ($schema present)")
@@ -184,6 +187,99 @@ func TestLoad_DerivesPathsAndSettings(t *testing.T) {
 	}
 	if got := p.Settings.Repos["api"]; got.Path != "repos/api" || got.DefaultBase != "main" {
 		t.Errorf("Repos[api] = %#v, want path=repos/api defaultBase=main", got)
+	}
+}
+
+func TestLoad_WorkspacesDirDerivation(t *testing.T) {
+	clearBecketConfig(t)
+
+	tests := []struct {
+		name       string
+		body       string   // settings.json content
+		mkdirs     []string // dirs to create under root before Load
+		wantWs     string   // expected WorkspacesDir, relative to root
+		wantLegacy string   // expected LegacyWorkspacesDir, relative to root ("" = unset)
+	}{
+		{
+			name:   "default with no legacy dir",
+			body:   minimalConfig,
+			wantWs: "workspaces",
+		},
+		{
+			name:       "legacy dir exists, no target yet: legacy stays effective",
+			body:       minimalConfig,
+			mkdirs:     []string{".becket/workspaces"},
+			wantWs:     ".becket/workspaces",
+			wantLegacy: ".becket/workspaces",
+		},
+		{
+			name:       "legacy and target both exist: target wins, legacy flagged",
+			body:       minimalConfig,
+			mkdirs:     []string{".becket/workspaces", "workspaces"},
+			wantWs:     "workspaces",
+			wantLegacy: ".becket/workspaces",
+		},
+		{
+			name:   "explicit workspacesDir wins over legacy fallback",
+			body:   `{"repos":{},"branchPrefix":"feat/","workspacesDir":"features"}`,
+			mkdirs: []string{".becket/workspaces"},
+			wantWs: "features",
+			// legacy dir still exists and differs from the target: flag it
+			wantLegacy: ".becket/workspaces",
+		},
+		{
+			name:   "explicitly configured to the legacy location is not legacy",
+			body:   `{"repos":{},"branchPrefix":"feat/","workspacesDir":".becket/workspaces"}`,
+			mkdirs: []string{".becket/workspaces"},
+			wantWs: ".becket/workspaces",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeConfig(t, root, tt.body)
+			for _, d := range tt.mkdirs {
+				if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+					t.Fatalf("mkdir %s: %v", d, err)
+				}
+			}
+			t.Chdir(root)
+
+			p, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil", err)
+			}
+			if want := filepath.Join(p.Dir, tt.wantWs); p.WorkspacesDir != want {
+				t.Errorf("WorkspacesDir = %q, want %q", p.WorkspacesDir, want)
+			}
+			wantLegacy := ""
+			if tt.wantLegacy != "" {
+				wantLegacy = filepath.Join(p.Dir, tt.wantLegacy)
+			}
+			if p.LegacyWorkspacesDir != wantLegacy {
+				t.Errorf("LegacyWorkspacesDir = %q, want %q", p.LegacyWorkspacesDir, wantLegacy)
+			}
+		})
+	}
+}
+
+func TestWorkspacesPath(t *testing.T) {
+	tests := []struct {
+		name string
+		s    Settings
+		want string
+	}{
+		{name: "default", s: Settings{}, want: filepath.Join("/plat", "workspaces")},
+		{name: "relative override", s: Settings{WorkspacesDir: "features"}, want: filepath.Join("/plat", "features")},
+		{name: "absolute override", s: Settings{WorkspacesDir: "/elsewhere/ws"}, want: "/elsewhere/ws"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := WorkspacesPath("/plat", tt.s); got != tt.want {
+				t.Errorf("WorkspacesPath = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -339,12 +435,13 @@ func TestSettings_JSONShape(t *testing.T) {
 					"web": {Path: "repos/web", DefaultBase: "main"},
 					"api": {Path: "repos/api", DefaultBase: "main"},
 				},
-				BranchPrefix: "feat/",
-				Files:        []string{".env", ".env.local"},
-				Docker:       "compose.yaml",
-				Session:      "becket",
+				BranchPrefix:  "feat/",
+				WorkspacesDir: "ws",
+				Files:         []string{".env", ".env.local"},
+				Docker:        "compose.yaml",
+				Session:       "becket",
 			},
-			want: `{"$schema":"s","repos":{"api":{"path":"repos/api","defaultBase":"main"},"web":{"path":"repos/web","defaultBase":"main"}},"branchPrefix":"feat/","files":[".env",".env.local"],"docker":"compose.yaml","session":"becket"}`,
+			want: `{"$schema":"s","repos":{"api":{"path":"repos/api","defaultBase":"main"},"web":{"path":"repos/web","defaultBase":"main"}},"branchPrefix":"feat/","workspacesDir":"ws","files":[".env",".env.local"],"docker":"compose.yaml","session":"becket"}`,
 		},
 		{
 			name: "omitempty drops schema/files/docker/session; repos and branchPrefix always present",

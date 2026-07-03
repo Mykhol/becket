@@ -7,7 +7,7 @@
 # workspace is then created quietly — only the `shell` transcript matters.
 #
 # The CWD-detection path is exercised by `cd`-ing into the repo's worktree
-# (.becket/workspaces/ws/service, the `wt ws service` helper) before invoking
+# (workspaces/ws/service, the `wt ws service` helper) before invoking
 # `becket shell`; it still resolves up to the workspace dir.
 
 mkdir platform origins
@@ -33,7 +33,7 @@ sanitize out
 cmp out $WORK/shell-id.stdout
 
 # ── shell detects the workspace from the current directory ──────────────────────
-cd $WORK/platform/.becket/workspaces/ws/service
+cd $WORK/platform/workspaces/ws/service
 exec becket shell
 cp stdout out
 sanitize out
@@ -49,8 +49,8 @@ cmp err $WORK/shell-notfound.stderr
 -- readme --
 # repo
 -- shell-id.stdout --
-<SANDBOX>/platform/.becket/workspaces/ws
+<SANDBOX>/platform/workspaces/ws
 -- shell-cwd.stdout --
-<SANDBOX>/platform/.becket/workspaces/ws
+<SANDBOX>/platform/workspaces/ws
 -- shell-notfound.stderr --
 error: Workspace 'nonexistent' not found.

@@ -31,13 +31,13 @@ exec becket create ws-a --repos service
 # Manifests are sanitized via a COPY (not in place): the next `becket status`
 # reads the live manifest, so rewriting its timestamp to <TS> there would make
 # RelativeTime fail to parse and drop the "just now" suffix.
-cd $WORK/platform/.becket/workspaces/ws-a
+cd $WORK/platform/workspaces/ws-a
 exec becket status set 'blocked on review' --by alice
 cp stdout out
 sanitize out
 cmp out $WORK/status-set.stdout
 
-cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+cp $WORK/platform/workspaces/ws-a/.becket.json manifest
 sanitize manifest
 cmp manifest $WORK/manifest-set.json
 
@@ -53,7 +53,7 @@ cp stdout out
 sanitize out
 cmp out $WORK/status-clear.stdout
 
-cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+cp $WORK/platform/workspaces/ws-a/.becket.json manifest
 sanitize manifest
 cmp manifest $WORK/manifest-clear.json
 
@@ -64,18 +64,18 @@ cp stdout out
 sanitize out
 cmp out $WORK/desc-explicit.stdout
 
-cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+cp $WORK/platform/workspaces/ws-a/.becket.json manifest
 sanitize manifest
 cmp manifest $WORK/manifest-desc1.json
 
 # ── desc with id detected from CWD (single-arg form) ────────────────────────────
-cd $WORK/platform/.becket/workspaces/ws-a
+cd $WORK/platform/workspaces/ws-a
 exec becket desc 'second description'
 cp stdout out
 sanitize out
 cmp out $WORK/desc-cwd.stdout
 
-cp $WORK/platform/.becket/workspaces/ws-a/.becket.json manifest
+cp $WORK/platform/workspaces/ws-a/.becket.json manifest
 sanitize manifest
 cmp manifest $WORK/manifest-desc2.json
 

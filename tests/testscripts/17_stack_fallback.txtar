@@ -42,20 +42,20 @@ cmp out $WORK/create-child.stdout
 cmp err $WORK/create-child.stderr
 
 # manifest: child
-sanitize $WORK/platform/.becket/workspaces/child/.becket.json
-cmp $WORK/platform/.becket/workspaces/child/.becket.json $WORK/manifest-child.json
+sanitize $WORK/platform/workspaces/child/.becket.json
+cmp $WORK/platform/workspaces/child/.becket.json $WORK/manifest-child.json
 
 -- readme --
 # repo
 -- create-child.stdout --
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/child
+▸ Created workspace: <SANDBOX>/platform/workspaces/child
 ▸ Creating worktree: alpha → feature/child (base: feature/parent)
 HEAD is now at <SHA> init alpha
 ▸ Stack parent 'parent' has no 'beta' — basing on 'main' instead.
 ▸ Creating worktree: beta → feature/child (base: main)
 HEAD is now at <SHA> init beta
 
-▸ Workspace child ready at <SANDBOX>/platform/.becket/workspaces/child
+▸ Workspace child ready at <SANDBOX>/platform/workspaces/child
 ▸ Branch: feature/child
 -- create-child.stderr --
 Preparing worktree (new branch 'feature/child')

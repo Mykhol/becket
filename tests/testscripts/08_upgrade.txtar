@@ -40,8 +40,8 @@ sanitize out
 cmp out $WORK/upgrade-2.stdout
 
 # manifest: ws
-sanitize $WORK/platform/.becket/workspaces/ws/.becket.json
-cmp $WORK/platform/.becket/workspaces/ws/.becket.json $WORK/manifest-ws.json
+sanitize $WORK/platform/workspaces/ws/.becket.json
+cmp $WORK/platform/workspaces/ws/.becket.json $WORK/manifest-ws.json
 
 -- readme --
 # repo

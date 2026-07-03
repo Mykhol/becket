@@ -38,8 +38,8 @@ cmp out $WORK/create-proj42.stdout
 cmp err $WORK/create-proj42.stderr
 
 # manifest: proj-42
-sanitize $WORK/platform/.becket/workspaces/proj-42/.becket.json
-cmp $WORK/platform/.becket/workspaces/proj-42/.becket.json $WORK/manifest-proj42-create.json
+sanitize $WORK/platform/workspaces/proj-42/.becket.json
+cmp $WORK/platform/workspaces/proj-42/.becket.json $WORK/manifest-proj42-create.json
 
 # branches: service (deterministic git ordering)
 exec git -C $WORK/platform/service branch --format='%(refname:short)'
@@ -88,8 +88,8 @@ sanitize out err
 cmp out $WORK/add-admin.stdout
 cmp err $WORK/add-admin.stderr
 
-sanitize $WORK/platform/.becket/workspaces/proj-42/.becket.json
-cmp $WORK/platform/.becket/workspaces/proj-42/.becket.json $WORK/manifest-proj42-add.json
+sanitize $WORK/platform/workspaces/proj-42/.becket.json
+cmp $WORK/platform/workspaces/proj-42/.becket.json $WORK/manifest-proj42-add.json
 
 exec git -C $WORK/platform/admin branch --format='%(refname:short)'
 cp stdout out
@@ -97,12 +97,12 @@ sanitize out
 cmp out $WORK/branches-admin-add.txt
 
 # workspaces tree shape (the result of create+add: docs/, AGENTS.md, schemas)
-exists $WORK/platform/.becket/workspaces/proj-42/.becket.json
-exists $WORK/platform/.becket/workspaces/proj-42/AGENTS.md
-exists $WORK/platform/.becket/workspaces/proj-42/docs
-exists $WORK/platform/.becket/workspaces/proj-42/service
-exists $WORK/platform/.becket/workspaces/proj-42/admin
-exists $WORK/platform/.becket/workspaces/proj-42/workspace.schema.json
+exists $WORK/platform/workspaces/proj-42/.becket.json
+exists $WORK/platform/workspaces/proj-42/AGENTS.md
+exists $WORK/platform/workspaces/proj-42/docs
+exists $WORK/platform/workspaces/proj-42/service
+exists $WORK/platform/workspaces/proj-42/admin
+exists $WORK/platform/workspaces/proj-42/workspace.schema.json
 
 # ── change the description after the fact ───────────────────────────────────────
 exec becket desc proj-42 'real-time dark mode'
@@ -110,8 +110,8 @@ cp stdout out
 sanitize out
 cmp out $WORK/desc.stdout
 
-sanitize $WORK/platform/.becket/workspaces/proj-42/.becket.json
-cmp $WORK/platform/.becket/workspaces/proj-42/.becket.json $WORK/manifest-proj42-desc.json
+sanitize $WORK/platform/workspaces/proj-42/.becket.json
+cmp $WORK/platform/workspaces/proj-42/.becket.json $WORK/manifest-proj42-desc.json
 
 # ── creating with no --repos selects all repos (non-TTY default) ────────────────
 exec becket create dash-9
@@ -121,8 +121,8 @@ sanitize out err
 cmp out $WORK/create-dash9.stdout
 cmp err $WORK/create-dash9.stderr
 
-sanitize $WORK/platform/.becket/workspaces/dash-9/.becket.json
-cmp $WORK/platform/.becket/workspaces/dash-9/.becket.json $WORK/manifest-dash9.json
+sanitize $WORK/platform/workspaces/dash-9/.becket.json
+cmp $WORK/platform/workspaces/dash-9/.becket.json $WORK/manifest-dash9.json
 
 exec becket list
 cp stdout out
@@ -146,8 +146,8 @@ sanitize -squeeze out
 cmp out $WORK/worktrees-service-teardown.txt
 
 # proj-42 workspace dir is gone; dash-9 remains
-! exists $WORK/platform/.becket/workspaces/proj-42
-exists $WORK/platform/.becket/workspaces/dash-9
+! exists $WORK/platform/workspaces/proj-42
+exists $WORK/platform/workspaces/dash-9
 
 exec becket list
 cp stdout out
@@ -157,11 +157,11 @@ cmp out $WORK/list-3.stdout
 -- readme --
 # repo
 -- create-proj42.stdout --
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/proj-42
+▸ Created workspace: <SANDBOX>/platform/workspaces/proj-42
 ▸ Creating worktree: service → feature/proj-42-dark-mode (base: main)
 HEAD is now at <SHA> init service
 
-▸ Workspace proj-42 ready at <SANDBOX>/platform/.becket/workspaces/proj-42
+▸ Workspace proj-42 ready at <SANDBOX>/platform/workspaces/proj-42
 ▸ Branch: feature/proj-42-dark-mode
 -- create-proj42.stderr --
 Preparing worktree (new branch 'feature/proj-42-dark-mode')
@@ -183,7 +183,7 @@ feature/proj-42-dark-mode
 main
 -- worktrees-service-create.txt --
 <SANDBOX>/platform/service <SHA> [main]
-<SANDBOX>/platform/.becket/workspaces/proj-42/service <SHA> [feature/proj-42-dark-mode]
+<SANDBOX>/platform/workspaces/proj-42/service <SHA> [feature/proj-42-dark-mode]
 -- list-1.stdout --
 
 ID        REPOS     CREATED      DESCRIPTION
@@ -286,13 +286,13 @@ main
   }
 }
 -- create-dash9.stdout --
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/dash-9
+▸ Created workspace: <SANDBOX>/platform/workspaces/dash-9
 ▸ Creating worktree: admin → feature/dash-9 (base: main)
 HEAD is now at <SHA> init admin
 ▸ Creating worktree: service → feature/dash-9 (base: main)
 HEAD is now at <SHA> init service
 
-▸ Workspace dash-9 ready at <SANDBOX>/platform/.becket/workspaces/dash-9
+▸ Workspace dash-9 ready at <SANDBOX>/platform/workspaces/dash-9
 ▸ Branch: feature/dash-9
 -- create-dash9.stderr --
 Preparing worktree (new branch 'feature/dash-9')
@@ -334,7 +334,7 @@ feature/dash-9
 main
 -- worktrees-service-teardown.txt --
 <SANDBOX>/platform/service <SHA> [main]
-<SANDBOX>/platform/.becket/workspaces/dash-9/service <SHA> [feature/dash-9]
+<SANDBOX>/platform/workspaces/dash-9/service <SHA> [feature/dash-9]
 -- list-3.stdout --
 
 ID       REPOS           CREATED      DESCRIPTION

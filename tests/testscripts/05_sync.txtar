@@ -81,6 +81,6 @@ From <SANDBOX>/origins/service
 Successfully rebased and updated refs/heads/feature/ws.
 -- worktrees-service.txt --
 <SANDBOX>/platform/service <SHA> [main]
-<SANDBOX>/platform/.becket/workspaces/ws/service <SHA> [feature/ws]
+<SANDBOX>/platform/workspaces/ws/service <SHA> [feature/ws]
 -- sync-child.stdout --
 ▸ Workspace 'child' is stacked on 'ws'. Use becket restack child instead of sync.

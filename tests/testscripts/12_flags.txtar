@@ -43,8 +43,8 @@ sanitize out err
 cmp out $WORK/create-base.stdout
 cmp err $WORK/create-base.stderr
 
-sanitize $WORK/platform/.becket/workspaces/feat/.becket.json
-cmp $WORK/platform/.becket/workspaces/feat/.becket.json $WORK/manifest-feat.json
+sanitize $WORK/platform/workspaces/feat/.becket.json
+cmp $WORK/platform/workspaces/feat/.becket.json $WORK/manifest-feat.json
 
 # ── teardown without --delete-branches removes the worktree but keeps the branch ─
 exec becket teardown feat
@@ -59,12 +59,12 @@ sanitize out
 cmp out $WORK/branches-service.txt
 
 # workspaces tree is empty after teardown (the only workspace is gone)
-! exists $WORK/platform/.becket/workspaces/feat
-exists $WORK/platform/.becket/workspaces
+! exists $WORK/platform/workspaces/feat
+exists $WORK/platform/workspaces
 
 # ── add with the workspace id detected from the current directory (single-arg) ──
 exec becket create multi --repos service
-cd $WORK/platform/.becket/workspaces/multi/service
+cd $WORK/platform/workspaces/multi/service
 exec becket add admin
 cp stdout out
 cp stderr err
@@ -72,17 +72,17 @@ sanitize out err
 cmp out $WORK/add-admin.stdout
 cmp err $WORK/add-admin.stderr
 
-sanitize $WORK/platform/.becket/workspaces/multi/.becket.json
-cmp $WORK/platform/.becket/workspaces/multi/.becket.json $WORK/manifest-multi.json
+sanitize $WORK/platform/workspaces/multi/.becket.json
+cmp $WORK/platform/workspaces/multi/.becket.json $WORK/manifest-multi.json
 
 -- readme --
 # repo
 -- create-base.stdout --
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
+▸ Created workspace: <SANDBOX>/platform/workspaces/feat
 ▸ Creating worktree: service → feature/feat (base: develop)
 HEAD is now at <SHA> init service
 
-▸ Workspace feat ready at <SANDBOX>/platform/.becket/workspaces/feat
+▸ Workspace feat ready at <SANDBOX>/platform/workspaces/feat
 ▸ Branch: feature/feat
 -- create-base.stderr --
 Preparing worktree (new branch 'feature/feat')

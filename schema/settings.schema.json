@@ -51,6 +51,11 @@
       "description": "Prefix for feature branch names.",
       "default": "feature/"
     },
+    "workspacesDir": {
+      "type": "string",
+      "description": "Directory holding workspaces, relative to the platform directory.",
+      "default": "workspaces"
+    },
     "files": {
       "type": "array",
       "description": "Files to copy into each workspace root. Paths are relative to the platform directory.",

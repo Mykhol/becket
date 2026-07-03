@@ -1,0 +1,119 @@
+# becket upgrade — migrate workspaces out of the legacy .becket/workspaces
+# location into <platform>/workspaces, repairing each moved git worktree's
+# registration in its main repo.
+#
+# The legacy layout is built by hand (git worktree add + a manifest), exactly
+# as older becket versions left it. Until upgrade runs, commands keep operating
+# on the legacy dir (with a migration warning); afterwards the legacy dir is
+# gone and the main repo's worktree registry points at the new location.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# a current-style settings.json, but workspaces in the legacy location
+mkdir platform/.becket
+cp $WORK/settings.json $WORK/platform/.becket/settings.json
+mkdir platform/.becket/workspaces/ws
+exec git -C platform/service worktree add $WORK/platform/.becket/workspaces/ws/service -b feature/ws main
+cp manifest-ws platform/.becket/workspaces/ws/.becket.json
+cp notes platform/.becket/workspaces/notes.txt
+
+cd platform
+
+# ── pre-migration: commands still see the legacy workspaces, and warn ────────────
+exec becket list
+cp stdout out
+sanitize out
+cmp out $WORK/list-before.stdout
+
+# ── upgrade moves workspaces and repairs worktrees ───────────────────────────────
+exec becket upgrade
+cp stdout out
+sanitize out
+cmp out $WORK/upgrade-1.stdout
+
+exists $WORK/platform/workspaces/ws/service/README.md
+exists $WORK/platform/workspaces/ws/.becket.json
+exists $WORK/platform/workspaces/notes.txt
+! exists $WORK/platform/.becket/workspaces
+
+# the main repo's worktree registry points at the new location (repair worked)
+exec git -C $WORK/platform/service worktree list
+stdout 'platform[/\\]workspaces[/\\]ws[/\\]service'
+! stdout '\.becket'
+
+# the moved worktree is fully functional from both sides
+exec git -C $WORK/platform/workspaces/ws/service status --porcelain
+
+# ── post-migration: no more warning, upgrade is idempotent ───────────────────────
+exec becket list
+cp stdout out
+sanitize out
+cmp out $WORK/list-after.stdout
+
+exec becket upgrade
+cp stdout out
+sanitize out
+cmp out $WORK/upgrade-2.stdout
+
+-- readme --
+# repo
+-- notes --
+stray file in the legacy dir; migrates too
+-- settings.json --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}
+-- manifest-ws --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "ws",
+  "created": "2020-01-01",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/ws",
+      "base": "main"
+    }
+  }
+}
+-- list-before.stdout --
+▸ Workspaces live in legacy <SANDBOX>/platform/.becket/workspaces. Run becket upgrade to migrate them to <SANDBOX>/platform/workspaces.
+
+ID   REPOS     CREATED      DESCRIPTION
+───  ────────  ──────────   ──────────────────────────────
+ws   service   <DATE>   
+
+-- upgrade-1.stdout --
+▸ Workspaces live in legacy <SANDBOX>/platform/.becket/workspaces. Run becket upgrade to migrate them to <SANDBOX>/platform/workspaces.
+▸ settings.json is already current.
+▸ Moved notes.txt → <SANDBOX>/platform/workspaces/notes.txt
+▸ Moved ws → <SANDBOX>/platform/workspaces/ws
+▸ Workspace ws is already current.
+
+▸ Upgrade complete.
+-- list-after.stdout --
+
+ID   REPOS     CREATED      DESCRIPTION
+───  ────────  ──────────   ──────────────────────────────
+ws   service   <DATE>   
+
+-- upgrade-2.stdout --
+▸ settings.json is already current.
+▸ Workspace ws is already current.
+
+▸ Upgrade complete.

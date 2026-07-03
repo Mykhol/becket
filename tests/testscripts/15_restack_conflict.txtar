@@ -24,21 +24,21 @@ exec becket init
 
 # Parent: commit A on the same line, publish to origin.
 exec becket create parent --repos service
-cp $WORK/parent-a $WORK/platform/.becket/workspaces/parent/service/README.md
-exec git -C $WORK/platform/.becket/workspaces/parent/service add README.md
-exec git -C $WORK/platform/.becket/workspaces/parent/service commit -m 'parent: A'
+cp $WORK/parent-a $WORK/platform/workspaces/parent/service/README.md
+exec git -C $WORK/platform/workspaces/parent/service add README.md
+exec git -C $WORK/platform/workspaces/parent/service commit -m 'parent: A'
 exec becket push parent
 
 # Child stacked on parent (base = A); commit B editing that same line.
 exec becket create child --stacked-on parent --repos service
-cp $WORK/child-b $WORK/platform/.becket/workspaces/child/service/README.md
-exec git -C $WORK/platform/.becket/workspaces/child/service add README.md
-exec git -C $WORK/platform/.becket/workspaces/child/service commit -m 'child: B'
+cp $WORK/child-b $WORK/platform/workspaces/child/service/README.md
+exec git -C $WORK/platform/workspaces/child/service add README.md
+exec git -C $WORK/platform/workspaces/child/service commit -m 'child: B'
 
 # Parent advances to C on the same line, republished → child's B will conflict.
-cp $WORK/parent-c $WORK/platform/.becket/workspaces/parent/service/README.md
-exec git -C $WORK/platform/.becket/workspaces/parent/service add README.md
-exec git -C $WORK/platform/.becket/workspaces/parent/service commit -m 'parent: C'
+cp $WORK/parent-c $WORK/platform/workspaces/parent/service/README.md
+exec git -C $WORK/platform/workspaces/parent/service add README.md
+exec git -C $WORK/platform/workspaces/parent/service commit -m 'parent: C'
 exec becket push parent
 
 # ── restack reports the rebase conflict and how to resolve it ───────────────────
@@ -64,7 +64,7 @@ PARENT-C
 Auto-merging README.md
 CONFLICT (content): Merge conflict in README.md
 ▸ Rebase conflict in service:
-▸   cd <SANDBOX>/platform/.becket/workspaces/child/service
+▸   cd <SANDBOX>/platform/workspaces/child/service
 ▸   # resolve conflicts, then:  git add . && git rebase --continue
 ▸   # or to bail:                git rebase --abort
 

@@ -26,12 +26,13 @@ type RepoConfig struct {
 // ($schema, repos, branchPrefix, …); the repos map marshals with keys sorted
 // lexically by encoding/json.
 type Settings struct {
-	Schema       string                `json:"$schema,omitempty"`
-	Repos        map[string]RepoConfig `json:"repos"`
-	BranchPrefix string                `json:"branchPrefix"`
-	Files        []string              `json:"files,omitempty"`
-	Docker       string                `json:"docker,omitempty"`
-	Session      string                `json:"session,omitempty"`
+	Schema        string                `json:"$schema,omitempty"`
+	Repos         map[string]RepoConfig `json:"repos"`
+	BranchPrefix  string                `json:"branchPrefix"`
+	WorkspacesDir string                `json:"workspacesDir,omitempty"`
+	Files         []string              `json:"files,omitempty"`
+	Docker        string                `json:"docker,omitempty"`
+	Session       string                `json:"session,omitempty"`
 }
 
 // Platform is a loaded config plus the derived paths the commands operate on.
@@ -39,9 +40,31 @@ type Platform struct {
 	ConfigFile    string
 	Dir           string // platform root (parent of .becket)
 	WorkspacesDir string
-	HasSchema     bool     // whether the on-disk config carried a $schema key
-	RepoOrder     []string // repo names in config document order
-	Settings      Settings
+	// LegacyWorkspacesDir is set when workspaces still live under the pre-1.x
+	// .becket/workspaces location and that isn't the configured target. While
+	// the target dir doesn't exist yet, WorkspacesDir points here so commands
+	// keep working until 'becket upgrade' migrates.
+	LegacyWorkspacesDir string
+	HasSchema           bool     // whether the on-disk config carried a $schema key
+	RepoOrder           []string // repo names in config document order
+	Settings            Settings
+}
+
+// DefaultWorkspacesRel is where workspaces live relative to the platform root
+// when settings.workspacesDir is unset.
+const DefaultWorkspacesRel = "workspaces"
+
+// WorkspacesPath resolves the configured (or default) workspaces directory for
+// a platform rooted at dir — the migration target, ignoring any legacy layout.
+func WorkspacesPath(dir string, s Settings) string {
+	rel := s.WorkspacesDir
+	if rel == "" {
+		rel = DefaultWorkspacesRel
+	}
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	return filepath.Join(dir, rel)
 }
 
 // ErrNotFound is returned by Find/Load when no platform config is discoverable.
@@ -90,12 +113,36 @@ func Load() (*Platform, error) {
 	_, hasSchema := probe["$schema"]
 
 	dir := filepath.Dir(filepath.Dir(path)) // <platform>/.becket/settings.json -> <platform>
+	wsDir, legacy := deriveWorkspacesDirs(dir, s)
 	return &Platform{
-		ConfigFile:    path,
-		Dir:           dir,
-		WorkspacesDir: filepath.Join(dir, ".becket", "workspaces"),
-		HasSchema:     hasSchema,
-		RepoOrder:     jsonfmt.NestedKeyOrder(raw, "repos"),
-		Settings:      s,
+		ConfigFile:          path,
+		Dir:                 dir,
+		WorkspacesDir:       wsDir,
+		LegacyWorkspacesDir: legacy,
+		HasSchema:           hasSchema,
+		RepoOrder:           jsonfmt.NestedKeyOrder(raw, "repos"),
+		Settings:            s,
 	}, nil
+}
+
+// deriveWorkspacesDirs picks the effective workspaces dir plus the legacy
+// .becket/workspaces path when one exists and isn't the configured target
+// (i.e. a migration is pending). With no explicit workspacesDir setting and no
+// migrated target yet, the legacy dir stays effective so existing platforms
+// keep working until 'becket upgrade' moves them.
+func deriveWorkspacesDirs(dir string, s Settings) (wsDir, legacy string) {
+	wsDir = WorkspacesPath(dir, s)
+	legacyDir := filepath.Join(dir, ".becket", "workspaces")
+	if wsDir == legacyDir {
+		return wsDir, "" // explicitly configured to the old location: not legacy
+	}
+	if fi, err := os.Stat(legacyDir); err != nil || !fi.IsDir() {
+		return wsDir, ""
+	}
+	if s.WorkspacesDir == "" {
+		if fi, err := os.Stat(wsDir); err != nil || !fi.IsDir() {
+			wsDir = legacyDir
+		}
+	}
+	return wsDir, legacyDir
 }

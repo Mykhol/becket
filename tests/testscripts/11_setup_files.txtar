@@ -35,7 +35,7 @@ cmp out $WORK/create.stdout
 cmp err $WORK/create.stderr
 
 # workspaces tree (find then sort for deterministic ordering)
-cd $WORK/platform/.becket/workspaces
+cd $WORK/platform/workspaces
 exec find . -mindepth 1 -maxdepth 2
 cp stdout tree
 exec sort tree
@@ -69,13 +69,13 @@ shared platform file
   "files": ["shared.txt", "missing.txt"]
 }
 -- create.stdout --
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/feat
+▸ Created workspace: <SANDBOX>/platform/workspaces/feat
 ▸ Creating worktree: service → feature/feat (base: main)
 HEAD is now at <SHA> init service
 ▸ Copied: shared.txt
 ▸ File not found, skipping: missing.txt
 
-▸ Workspace feat ready at <SANDBOX>/platform/.becket/workspaces/feat
+▸ Workspace feat ready at <SANDBOX>/platform/workspaces/feat
 ▸ Branch: feature/feat
 
 ▸ Setting up service...

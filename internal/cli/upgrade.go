@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Mykhol/becket/internal/config"
+	"github.com/Mykhol/becket/internal/git"
 	"github.com/Mykhol/becket/internal/jsonfmt"
 	"github.com/Mykhol/becket/internal/render"
 	"github.com/Mykhol/becket/internal/workspace"
@@ -45,6 +47,9 @@ func runUpgrade() {
 	} else {
 		render.Info("settings.json is already current.")
 	}
+
+	// ── migrate legacy .becket/workspaces ────────────────────────────────────────
+	migrateLegacyWorkspaces(p)
 
 	// ── workspace manifests ──────────────────────────────────────────────────────
 	const wsRef = "./workspace.schema.json"
@@ -98,6 +103,69 @@ func runUpgrade() {
 
 	fmt.Println()
 	render.Info("Upgrade complete.")
+}
+
+// migrateLegacyWorkspaces moves everything under the legacy .becket/workspaces
+// dir into the configured workspaces dir and repairs each moved git worktree's
+// link back from its main repo. Git records worktree locations by absolute
+// path, so a bare rename leaves the main repo pointing at the old location;
+// `git worktree repair` run inside the moved worktree fixes that back-pointer.
+// Updates p.WorkspacesDir so the rest of the upgrade operates on the new
+// location.
+func migrateLegacyWorkspaces(p *config.Platform) {
+	legacy := p.LegacyWorkspacesDir
+	if legacy == "" {
+		return
+	}
+	target := config.WorkspacesPath(p.Dir, p.Settings)
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		render.Die("%v", err)
+	}
+	entries, err := os.ReadDir(legacy)
+	if err != nil {
+		render.Die("%v", err)
+	}
+	for _, e := range entries {
+		src := filepath.Join(legacy, e.Name())
+		dst := filepath.Join(target, e.Name())
+		if _, err := os.Stat(dst); err == nil {
+			render.Warn("Not migrating %s: %s already exists.", e.Name(), dst)
+			continue
+		}
+		if err := os.Rename(src, dst); err != nil {
+			render.Warn("Could not move %s: %v", e.Name(), err)
+			continue
+		}
+		render.Info("Moved %s → %s", e.Name(), dst)
+		repairWorktrees(dst)
+	}
+	// Remove the legacy dir only once everything has moved out of it.
+	if rest, err := os.ReadDir(legacy); err == nil && len(rest) == 0 {
+		_ = os.Remove(legacy)
+		p.LegacyWorkspacesDir = ""
+	}
+	p.WorkspacesDir = target
+}
+
+// repairWorktrees runs `git worktree repair` inside each repo checkout of a
+// moved workspace (best-effort; a worktree's .git is a file, not a dir).
+func repairWorktrees(ws string) {
+	entries, err := os.ReadDir(ws)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		wt := filepath.Join(ws, e.Name())
+		if fi, err := os.Stat(filepath.Join(wt, ".git")); err != nil || fi.IsDir() {
+			continue
+		}
+		if err := git.Quiet(wt, "worktree", "repair"); err != nil {
+			render.Warn("Could not repair worktree %s: run 'git worktree repair' there manually.", wt)
+		}
+	}
 }
 
 // writeEmbeddedSchema writes one embedded schema file into dir (best-effort).

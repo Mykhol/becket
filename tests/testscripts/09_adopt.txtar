@@ -42,8 +42,8 @@ cmp out $WORK/adopt.stdout
 cmp err $WORK/adopt.stderr
 
 # manifest: rescued
-sanitize $WORK/platform/.becket/workspaces/rescued/.becket.json
-cmp $WORK/platform/.becket/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
+sanitize $WORK/platform/workspaces/rescued/.becket.json
+cmp $WORK/platform/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
 
 # branches: service (git's deterministic ordering)
 exec git -C $WORK/platform/service branch --format='%(refname:short)'
@@ -65,13 +65,13 @@ pre-existing
 error: Repo 'service' is already on base branch 'main'. Nothing to adopt.
 -- adopt.stdout --
 ▸ Detected service on branch feature/existing-work
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Created workspace: <SANDBOX>/platform/workspaces/rescued
 ▸ Switching service main dir → main...
 Your branch is up to date with 'origin/main'.
 ▸ Creating worktree: service → feature/existing-work
 HEAD is now at <SHA> wip: pre-existing work
 
-▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Workspace rescued ready at <SANDBOX>/platform/workspaces/rescued
 ▸ Adopted branches:
 ▸   service → feature/existing-work
 -- adopt.stderr --
@@ -95,4 +95,4 @@ feature/existing-work
 main
 -- worktrees-service.txt --
 <SANDBOX>/platform/service <SHA> [main]
-<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/existing-work]
+<SANDBOX>/platform/workspaces/rescued/service <SHA> [feature/existing-work]

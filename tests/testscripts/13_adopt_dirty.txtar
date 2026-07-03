@@ -36,8 +36,8 @@ cmp out $WORK/adopt.stdout
 cmp err $WORK/adopt.stderr
 
 # manifest: rescued
-sanitize $WORK/platform/.becket/workspaces/rescued/.becket.json
-cmp $WORK/platform/.becket/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
+sanitize $WORK/platform/workspaces/rescued/.becket.json
+cmp $WORK/platform/workspaces/rescued/.becket.json $WORK/manifest-rescued.json
 
 # worktrees: service (main worktree first; -squeeze collapses column padding)
 exec git -C $WORK/platform/service worktree list
@@ -46,7 +46,7 @@ sanitize -squeeze out
 cmp out $WORK/worktrees-service.txt
 
 # ── the uncommitted change was restored into the worktree ────────────────────────
-exec git -C $WORK/platform/.becket/workspaces/rescued/service status --porcelain
+exec git -C $WORK/platform/workspaces/rescued/service status --porcelain
 cp stdout out
 sanitize out
 cmp out $WORK/status-porcelain.txt
@@ -60,7 +60,7 @@ work in progress
 uncommitted edit
 -- adopt.stdout --
 ▸ Detected service on branch feature/wip
-▸ Created workspace: <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Created workspace: <SANDBOX>/platform/workspaces/rescued
 ▸ Stashing uncommitted changes in service...
 Saved working directory and index state On feature/wip: becket adopt rescued
 ▸ Switching service main dir → main...
@@ -77,7 +77,7 @@ Changes not staged for commit:
 no changes added to commit (use "git add" and/or "git commit -a")
 Dropped refs/stash@{0} (<SHA>)
 
-▸ Workspace rescued ready at <SANDBOX>/platform/.becket/workspaces/rescued
+▸ Workspace rescued ready at <SANDBOX>/platform/workspaces/rescued
 ▸ Adopted branches:
 ▸   service → feature/wip
 -- adopt.stderr --
@@ -98,6 +98,6 @@ Preparing worktree (checking out 'feature/wip')
 }
 -- worktrees-service.txt --
 <SANDBOX>/platform/service <SHA> [main]
-<SANDBOX>/platform/.becket/workspaces/rescued/service <SHA> [feature/wip]
+<SANDBOX>/platform/workspaces/rescued/service <SHA> [feature/wip]
 -- status-porcelain.txt --
  M README.md

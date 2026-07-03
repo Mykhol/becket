@@ -23,7 +23,7 @@ exec becket init                              # logs: init
 exec becket create ws --repos service         # logs: create
 
 # status + list run from inside the workspace dir so they are attributed to ws.
-cd $WORK/platform/.becket/workspaces/ws
+cd $WORK/platform/workspaces/ws
 exec becket status                            # logs: status (workspace=ws)
 exec becket list                              # logs: list (workspace=ws)
 

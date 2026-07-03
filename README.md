@@ -13,7 +13,7 @@ repo, all on a shared feature branch, managed as a unit.
 
 ```console
 $ becket create proj-42 --desc "dark mode" --repos web,api
-▸ Created workspace: ~/Developer/Platform/.becket/workspaces/proj-42
+▸ Created workspace: ~/Developer/Platform/workspaces/proj-42
 ▸ Creating worktree: web → feature/proj-42-dark-mode (base: main)
 ▸ Creating worktree: api → feature/proj-42-dark-mode (base: main)
 ▸ Workspace proj-42 ready
@@ -81,7 +81,7 @@ eval "$(becket shell-init)"
 
 ## Concepts
 
-A **workspace** lives at `.becket/workspaces/<id>/` and contains a git worktree
+A **workspace** lives at `<platform>/workspaces/<id>/` and contains a git worktree
 per selected repo (all on one feature branch), a shared `docs/` folder, a
 `.becket.json` manifest, and a generated `AGENTS.md` for AI agents. Workspaces
 can be **stacked** so one feature builds on another's branches; `becket restack`
@@ -103,8 +103,11 @@ rebases a stack onto its parent's current tips.
 ```
 
 Optional keys add per-repo `setup`/`dev`/`env` commands (for `becket setup` and
-`becket dev`), top-level `files` to copy into each workspace, and `docker` /
-`session` for the dev environment. `becket upgrade` migrates older configs.
+`becket dev`), top-level `files` to copy into each workspace, `workspacesDir`
+to relocate the workspaces directory (default `workspaces/`), and `docker` /
+`session` for the dev environment. `becket upgrade` migrates older configs —
+including moving workspaces out of the pre-1.x `.becket/workspaces/` location
+and repairing their git worktree links.
 
 ## Command reference
 

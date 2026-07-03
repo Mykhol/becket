@@ -26,6 +26,10 @@ func loadPlatform() *config.Platform {
 	if !p.HasSchema {
 		render.Warn("Config may be outdated. Run becket upgrade to update.")
 	}
+	if p.LegacyWorkspacesDir != "" {
+		render.Warn("Workspaces live in legacy %s. Run becket upgrade to migrate them to %s.",
+			p.LegacyWorkspacesDir, config.WorkspacesPath(p.Dir, p.Settings))
+	}
 	return p
 }
 

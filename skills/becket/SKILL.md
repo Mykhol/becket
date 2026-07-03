@@ -23,7 +23,7 @@ becket commands over raw `git worktree` for anything in a becket project.
 You're in one if any ancestor directory contains `.becket/settings.json` (the
 "platform directory", where the repo clones live) or `.becket.json` (a workspace
 manifest). `becket list` shows all workspaces; `becket status` shows the current
-one. Each workspace lives at `<platform>/.becket/workspaces/<id>/` and holds one
+one. Each workspace lives at `<platform>/workspaces/<id>/` and holds one
 worktree subdirectory per repo plus a generated `AGENTS.md` describing it — read
 that `AGENTS.md` when you start work inside a workspace.
 
