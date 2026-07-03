@@ -39,6 +39,12 @@ Workspace: proj-42 — dark mode
 
 ## Install
 
+**Homebrew** (macOS)
+
+```bash
+brew install Mykhol/tap/becket
+```
+
 **Prebuilt binary** — download the archive for your platform from the
 [latest release](https://github.com/Mykhol/becket/releases/latest), extract, and
 put `becket` on your `PATH` (macOS & Linux, amd64 & arm64).
