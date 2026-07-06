@@ -1,0 +1,61 @@
+# `becket sync` — after the rebase, directories left holding nothing but
+# Python bytecode caches are removed. An orphaned package dir (deleted
+# upstream, kept alive locally by its gitignored __pycache__) shadows
+# same-named imports; a live package's __pycache__ must survive.
+
+mkdir platform origins feeder
+
+# mk_repo service, with two python packages and __pycache__ gitignored
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp gitignore platform/service/.gitignore
+mkdir platform/service/pkg/logger platform/service/pkg/live
+cp mod platform/service/pkg/logger/mod.py
+cp mod platform/service/pkg/live/mod.py
+exec git -C platform/service add -A
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+exec becket create ws --repos service
+
+# bytecode caches appear in the worktree, as running Python would leave them
+mkdir workspaces/ws/service/pkg/logger/__pycache__ workspaces/ws/service/pkg/live/__pycache__
+cp $WORK/pyc workspaces/ws/service/pkg/logger/__pycache__/mod.cpython-312.pyc
+cp $WORK/pyc workspaces/ws/service/pkg/live/__pycache__/mod.cpython-312.pyc
+
+# upstream deletes the logger package
+exec git clone $WORK/origins/service.git $WORK/feeder/service
+exec git -C $WORK/feeder/service rm -q pkg/logger/mod.py
+exec git -C $WORK/feeder/service commit -m 'delete logger pkg'
+exec git -C $WORK/feeder/service push origin main
+
+exec becket sync ws
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/sync.stdout
+cmp err $WORK/sync.stderr
+
+# the orphaned package dir is gone; the live package's cache survives
+! exists $WORK/platform/workspaces/ws/service/pkg/logger
+exists $WORK/platform/workspaces/ws/service/pkg/live/__pycache__/mod.cpython-312.pyc
+exists $WORK/platform/workspaces/ws/service/pkg/live/mod.py
+
+-- gitignore --
+__pycache__/
+-- mod --
+x = 1
+-- pyc --
+fake bytecode
+-- sync.stdout --
+▸ Syncing service ← origin/main...
+▸ Removed orphaned Python cache: pkg/logger/
+
+▸ Sync complete.
+-- sync.stderr --
+From <SANDBOX>/origins/service
+ * branch            main       -> FETCH_HEAD
+   <SHA>..<SHA>  main       -> origin/main
+Successfully rebased and updated refs/heads/feature/ws.

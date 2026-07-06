@@ -78,6 +78,8 @@ func runRestack(args []string) {
 			render.Warn("  # resolve conflicts, then:  git add . && git rebase --continue")
 			render.Warn("  # or to bail:                git rebase --abort")
 			anyConflict = true
+		} else {
+			removePycacheOrphans(wt)
 		}
 	}
 

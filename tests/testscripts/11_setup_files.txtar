@@ -70,7 +70,7 @@ shared platform file
 }
 -- create.stdout --
 ▸ Created workspace: <SANDBOX>/platform/workspaces/feat
-▸ Creating worktree: service → feature/feat (base: main)
+▸ Creating worktree: service → feature/feat (base: origin/main)
 HEAD is now at <SHA> init service
 ▸ Copied: shared.txt
 ▸ File not found, skipping: missing.txt

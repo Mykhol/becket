@@ -116,6 +116,15 @@ func writeAgentsMD(wsPath string, m *workspace.Manifest, settings config.Setting
 	w("- Do not run `git worktree` commands directly. Use the `becket` CLI to manage this workspace.")
 	w("- To check status: `becket status " + m.ID + "`")
 	w("")
+	w("## Troubleshooting")
+	w("")
+	w("Environment drift is almost always fixed by re-running the repos' setup commands: `becket setup " + m.ID + "`.")
+	w("")
+	w("- **Imports or optional dependencies missing** after running package-manager commands directly — e.g. a bare `uv run`/`uv sync` re-syncs the venv *without* the extras the setup commands install. Re-run `becket setup " + m.ID + "`.")
+	w("- **`bad interpreter` errors, or tool shebangs pointing at a path that no longer exists** — the virtualenv predates a workspace move (venvs embed absolute paths). Re-run `becket setup " + m.ID + "` to recreate it.")
+	w("- **Imports resolving to a deleted package after `becket sync`/`restack`** — a package deleted upstream can survive locally as an orphaned `__pycache__` that shadows imports. becket removes pure-cache orphans after each rebase; if imports still misresolve, check `git status --ignored`.")
+	w("- **Branch starts behind origin** — the workspace was created from a stale local base by an older becket. `becket sync " + m.ID + "` rebases every repo onto `origin/<base>`.")
+	w("")
 
 	_ = os.WriteFile(filepath.Join(wsPath, "AGENTS.md"), []byte(b.String()), 0o644)
 }

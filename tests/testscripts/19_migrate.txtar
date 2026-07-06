@@ -25,6 +25,10 @@ exec git -C platform/service worktree add $WORK/platform/.becket/workspaces/ws/s
 cp manifest-ws platform/.becket/workspaces/ws/.becket.json
 cp notes platform/.becket/workspaces/notes.txt
 
+# a virtualenv inside the worktree — its absolute paths break on relocation
+mkdir platform/.becket/workspaces/ws/service/.venv
+cp pyvenv platform/.becket/workspaces/ws/service/.venv/pyvenv.cfg
+
 cd platform
 
 # ── pre-migration: commands still see the legacy workspaces, and warn ────────────
@@ -43,6 +47,12 @@ exists $WORK/platform/workspaces/ws/service/README.md
 exists $WORK/platform/workspaces/ws/.becket.json
 exists $WORK/platform/workspaces/notes.txt
 ! exists $WORK/platform/.becket/workspaces
+
+# the venv moved with the workspace (still broken — hence the warning above)
+exists $WORK/platform/workspaces/ws/service/.venv/pyvenv.cfg
+
+# upgrade (re)generates each workspace's AGENTS.md
+exists $WORK/platform/workspaces/ws/AGENTS.md
 
 # the main repo's worktree registry points at the new location (repair worked)
 exec git -C $WORK/platform/service worktree list
@@ -67,6 +77,9 @@ cmp out $WORK/upgrade-2.stdout
 # repo
 -- notes --
 stray file in the legacy dir; migrates too
+-- pyvenv --
+home = /somewhere/uv/python/bin
+version = 3.12.7
 -- settings.json --
 {
   "$schema": "./settings.schema.json",
@@ -103,6 +116,7 @@ ws   service   <DATE>
 ▸ settings.json is already current.
 ▸ Moved notes.txt → <SANDBOX>/platform/workspaces/notes.txt
 ▸ Moved ws → <SANDBOX>/platform/workspaces/ws
+▸ Workspace ws contains virtualenvs, which break when moved — recreate them: becket setup ws
 ▸ Workspace ws is already current.
 
 ▸ Upgrade complete.

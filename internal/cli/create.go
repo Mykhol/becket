@@ -129,9 +129,14 @@ func runCreate(args []string) {
 			base = rc.DefaultBase
 		}
 
+		start := base
+		if stackParent == "" {
+			start = fetchedBase(repoAbs, repo, base)
+		}
+
 		wt := filepath.Join(ws, repo)
-		render.Info("Creating worktree: %s → %s (base: %s)", repo, branch, base)
-		gitOrExit(git.Run(repoAbs, "worktree", "add", wt, "-b", branch, base))
+		render.Info("Creating worktree: %s → %s (base: %s)", repo, branch, start)
+		gitOrExit(git.Run(repoAbs, "worktree", "add", "--no-track", wt, "-b", branch, start))
 
 		m.Repos[repo] = workspace.RepoEntry{Branch: branch, Base: base}
 		m.Order = append(m.Order, repo)
@@ -150,6 +155,24 @@ func runCreate(args []string) {
 		fmt.Println()
 		runSetupForWorkspace(p, id)
 	}
+}
+
+// fetchedBase resolves the start point for a new branch: origin/<base> after a
+// fetch, falling back to the local ref when the repo has no origin or the
+// fetch fails. Branching from a stale local base is the silent failure this
+// guards against — the branch starts behind origin from its first commit.
+func fetchedBase(repoAbs, repo, base string) string {
+	if git.Quiet(repoAbs, "remote", "get-url", "origin") != nil {
+		return base
+	}
+	if git.Quiet(repoAbs, "fetch", "origin", base) != nil {
+		render.Warn("Could not fetch origin/%s for %s — branching from local '%s'.", base, repo, base)
+		return base
+	}
+	if !git.Verify(repoAbs, "origin/"+base) {
+		return base
+	}
+	return "origin/" + base
 }
 
 // next returns args[i+1] or "" if out of range (mirrors bash `shift 2`).

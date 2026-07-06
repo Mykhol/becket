@@ -60,6 +60,7 @@ func runUpgrade() {
 				continue
 			}
 			writeEmbeddedSchema(filepath.Dir(mp), "workspace.schema.json")
+			writeAgentsMD(filepath.Dir(mp), m, p.Settings)
 			wchanged := m.Schema != wsRef
 			m.Schema = wsRef
 			if wchanged {
@@ -138,6 +139,7 @@ func migrateLegacyWorkspaces(p *config.Platform) {
 		}
 		render.Info("Moved %s → %s", e.Name(), dst)
 		repairWorktrees(dst)
+		warnStaleVenvs(dst, e.Name())
 	}
 	// Remove the legacy dir only once everything has moved out of it.
 	if rest, err := os.ReadDir(legacy); err == nil && len(rest) == 0 {
@@ -145,6 +147,17 @@ func migrateLegacyWorkspaces(p *config.Platform) {
 		p.LegacyWorkspacesDir = ""
 	}
 	p.WorkspacesDir = target
+}
+
+// warnStaleVenvs flags virtualenvs inside a moved workspace: venv scripts and
+// pyvenv.cfg embed absolute paths, so relocation breaks them with confusing
+// "bad interpreter" errors long after the move. `git worktree repair` cannot
+// fix these — only recreating the venv does.
+func warnStaleVenvs(ws, id string) {
+	matches, _ := filepath.Glob(filepath.Join(ws, "*", "*", "pyvenv.cfg"))
+	if len(matches) > 0 {
+		render.Warn("Workspace %s contains virtualenvs, which break when moved — recreate them: becket setup %s", id, id)
+	}
 }
 
 // repairWorktrees runs `git worktree repair` inside each repo checkout of a

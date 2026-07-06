@@ -128,8 +128,15 @@ func runStatus(output string, args []string) {
 				st = "clean"
 			}
 			base := entry.Base
-			ahead := parseCount(git.CountRange(wt, base+".."+branch))
-			behind := parseCount(git.CountRange(wt, branch+".."+base))
+			// Count against origin/<base> when it exists — create and sync
+			// both work against origin, and the local base branch goes stale
+			// in a worktree flow (nothing ever pulls it).
+			countBase := base
+			if git.Verify(wt, "origin/"+base) {
+				countBase = "origin/" + base
+			}
+			ahead := parseCount(git.CountRange(wt, countBase+".."+branch))
+			behind := parseCount(git.CountRange(wt, branch+".."+countBase))
 			var lc *string
 			if iso := git.LastCommitISO(wt, branch); iso != "" {
 				lc = &iso

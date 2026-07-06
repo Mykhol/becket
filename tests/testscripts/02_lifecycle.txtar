@@ -158,7 +158,7 @@ cmp out $WORK/list-3.stdout
 # repo
 -- create-proj42.stdout --
 ▸ Created workspace: <SANDBOX>/platform/workspaces/proj-42
-▸ Creating worktree: service → feature/proj-42-dark-mode (base: main)
+▸ Creating worktree: service → feature/proj-42-dark-mode (base: origin/main)
 HEAD is now at <SHA> init service
 
 ▸ Workspace proj-42 ready at <SANDBOX>/platform/workspaces/proj-42
@@ -287,9 +287,9 @@ main
 }
 -- create-dash9.stdout --
 ▸ Created workspace: <SANDBOX>/platform/workspaces/dash-9
-▸ Creating worktree: admin → feature/dash-9 (base: main)
+▸ Creating worktree: admin → feature/dash-9 (base: origin/main)
 HEAD is now at <SHA> init admin
-▸ Creating worktree: service → feature/dash-9 (base: main)
+▸ Creating worktree: service → feature/dash-9 (base: origin/main)
 HEAD is now at <SHA> init service
 
 ▸ Workspace dash-9 ready at <SANDBOX>/platform/workspaces/dash-9

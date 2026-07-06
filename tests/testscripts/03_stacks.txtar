@@ -100,7 +100,7 @@ cmp err $WORK/restack-unstacked.stderr
 # repo
 -- create-base.stdout --
 ▸ Created workspace: <SANDBOX>/platform/workspaces/base-feature
-▸ Creating worktree: service → feature/base-feature-base (base: main)
+▸ Creating worktree: service → feature/base-feature-base (base: origin/main)
 HEAD is now at <SHA> init service
 
 ▸ Workspace base-feature ready at <SANDBOX>/platform/workspaces/base-feature
