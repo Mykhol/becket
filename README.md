@@ -61,7 +61,7 @@ go install github.com/Mykhol/becket@latest
 git clone https://github.com/Mykhol/becket && cd becket && make install
 ```
 
-Requires **Git 2.15+** (`becket pr` needs the [`gh`](https://cli.github.com) CLI).
+Requires **Git 2.16+** (`becket pr` needs the [`gh`](https://cli.github.com) CLI).
 
 ## Usage
 
@@ -133,7 +133,7 @@ and repairing their git worktree links.
 | `setup [id]` / `dev [id] [--repo NAME]` | Run setup commands / run repos' dev commands in the foreground |
 | `shell [id]` / `shell-init` | Print a workspace path / emit shell integration |
 | `teardown [id] [--delete-branches]` | Remove a workspace's worktrees (and branches) |
-| `upgrade` / `stats` | Migrate config & schemas / show local usage stats |
+| `upgrade` / `stats` | Migrate config & schemas, refresh workspace `AGENTS.md`s / show local usage stats |
 
 Run `becket <command> --help` for full flag details.
 

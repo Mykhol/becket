@@ -1,0 +1,83 @@
+# `becket create` — worktrees branch from origin/<base>, not the local base:
+# a clone whose main lags origin still yields a workspace that contains
+# origin's latest commits. Repos without an origin fall back to the local
+# base silently (no remote to consult).
+
+mkdir platform origins feeder
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# mk_repo local — no remote at all
+mkdir platform/local
+exec git -C platform/local init
+cp readme platform/local/README.md
+exec git -C platform/local add README.md
+exec git -C platform/local commit -m 'init local'
+
+# advance origin/main behind the platform clone's back
+exec git clone origins/service.git feeder/service
+cp newer feeder/service/NEWER.md
+exec git -C feeder/service add NEWER.md
+exec git -C feeder/service commit -m 'origin-only commit'
+exec git -C feeder/service push origin main
+
+cd platform
+exec becket init
+
+# ── create branches from origin/main even though local main is stale ─────────────
+exec becket create ws --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-ws.stdout
+cmp err $WORK/create-ws.stderr
+
+# the worktree contains the commit the local main never saw
+exists $WORK/platform/workspaces/ws/service/NEWER.md
+
+exec git -C $WORK/platform/workspaces/ws/service log --format=%s
+cp stdout out
+cmp out $WORK/log-subjects.txt
+
+# --no-track: the feature branch must not inherit origin/main as upstream
+! exec git -C $WORK/platform/workspaces/ws/service config --get branch.feature/ws.remote
+
+# ── a repo with no origin falls back to the local base ───────────────────────────
+exec becket create ws2 --repos local
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-ws2.stdout
+cmp err $WORK/create-ws2.stderr
+
+-- readme --
+# repo
+-- newer --
+pushed to origin only
+-- create-ws.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/ws
+▸ Creating worktree: service → feature/ws (base: origin/main)
+HEAD is now at <SHA> origin-only commit
+
+▸ Workspace ws ready at <SANDBOX>/platform/workspaces/ws
+▸ Branch: feature/ws
+-- create-ws.stderr --
+Preparing worktree (new branch 'feature/ws')
+-- log-subjects.txt --
+origin-only commit
+init service
+-- create-ws2.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/ws2
+▸ Creating worktree: local → feature/ws2 (base: main)
+HEAD is now at <SHA> init local
+
+▸ Workspace ws2 ready at <SANDBOX>/platform/workspaces/ws2
+▸ Branch: feature/ws2
+-- create-ws2.stderr --
+Preparing worktree (new branch 'feature/ws2')

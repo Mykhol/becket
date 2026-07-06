@@ -79,6 +79,7 @@ cmp $WORK/platform/workspaces/multi/.becket.json $WORK/manifest-multi.json
 # repo
 -- create-base.stdout --
 ▸ Created workspace: <SANDBOX>/platform/workspaces/feat
+▸ Could not fetch origin/develop for service — branching from local 'develop'.
 ▸ Creating worktree: service → feature/feat (base: develop)
 HEAD is now at <SHA> init service
 

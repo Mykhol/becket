@@ -37,6 +37,7 @@ func runSync(args []string) {
 		render.Info("Syncing %s ← origin/%s...", repo, base)
 		gitOrExit(git.Run(wt, "fetch", "origin", base))
 		gitOrExit(git.Run(wt, "rebase", "origin/"+base))
+		removePycacheOrphans(wt)
 	}
 	fmt.Println()
 	render.Info("Sync complete.")

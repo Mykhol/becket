@@ -82,7 +82,7 @@ run `becket restack child` to rebase the child onto the parent's new tips.
 ## Typical workflow
 
 ```bash
-becket create proj-42 --desc "dark mode" --repos web,api   # create
+becket create proj-42 --desc "dark mode" --repos web,api --setup   # create + env
 becket shell proj-42                                        # cd in (with shell-init)
 # … edit + commit in each repo's worktree …
 becket status proj-42                                       # check across repos
@@ -90,3 +90,27 @@ becket sync proj-42                                         # rebase onto base
 becket push proj-42 && becket pr proj-42                    # ship
 becket teardown proj-42 --delete-branches                   # clean up
 ```
+
+## Failure modes to pre-empt
+
+Environment drift inside a workspace is almost always fixed by re-running the
+repos' configured setup commands: `becket setup [id]`.
+
+- **Branch starts behind origin** — becket branches new worktrees from
+  `origin/<base>` (fetched at create), but a workspace created by an older
+  becket, offline, or from a repo without a remote starts from the local base,
+  which may be stale. If `becket status` shows the branch behind, or the code
+  predates recent merges, run `becket sync` (rebases onto `origin/<base>`).
+- **Optional dependencies vanish** — the setup commands are the canonical way
+  to build each repo's environment. Package-manager commands run directly can
+  silently undo them (e.g. a bare `uv run`/`uv sync` re-syncs the venv without
+  the extras the setup installed). If imports that worked stop resolving,
+  re-run `becket setup` instead of debugging the interpreter.
+- **`bad interpreter` / shebangs pointing at a dead path** — virtualenvs embed
+  absolute paths, so a venv created before a workspace was moved (e.g. the
+  pre-1.x `.becket/workspaces/` → `workspaces/` migration) breaks afterwards.
+  Recreate it with `becket setup`.
+- **Imports resolve to a deleted package after rebase** — a package removed
+  upstream can survive locally as an orphaned `__pycache__` dir that shadows
+  imports. `becket sync`/`restack` delete pure-cache orphans automatically; if
+  imports still misresolve after a rebase, inspect `git status --ignored`.
