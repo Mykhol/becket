@@ -46,8 +46,12 @@ that `AGENTS.md` when you start work inside a workspace.
   last-commit per repo. Use this first to understand a workspace.
 
 **Create / modify**
-- `becket create <id> [--desc TEXT] [--repos a,b] [--base BRANCH] [--stacked-on PARENT] [--setup]`
-  — new workspace + a worktree per repo on a fresh feature branch.
+- `becket create <id> [--desc TEXT] [--repos a,b] [--base BRANCH] [--branch BRANCH] [--stacked-on PARENT] [--setup]`
+  — new workspace + a worktree per repo on a fresh feature branch. Pass
+  `--branch <name>` to instead create the workspace on an EXISTING branch
+  (e.g. one that lives on origin but hasn't been pulled): becket fetches it
+  and creates a tracking worktree without touching the main clone's working
+  state. `--branch` is mutually exclusive with `--desc` and `--stacked-on`.
 - `becket adopt <id> [--repos a,b]` — wrap repos' already-checked-out branches
   into a new workspace (auto-stashes dirty changes).
 - `becket add [id] <repo>` — add another repo to an existing workspace.
@@ -89,6 +93,18 @@ becket status proj-42                                       # check across repos
 becket sync proj-42                                         # rebase onto base
 becket push proj-42 && becket pr proj-42                    # ship
 becket teardown proj-42 --delete-branches                   # clean up
+```
+
+### Resume an existing remote branch
+
+When the branch already lives on origin (you haven't pulled it), use `--branch`
+to spin up a workspace on it directly — becket fetches it and creates a
+tracking worktree without touching the main clone's working state:
+
+```bash
+becket create mul-2418 --branch feature/mul-2418-thing --repos ml-scribe
+becket shell mul-2418
+# … continue work …
 ```
 
 ## Failure modes to pre-empt
