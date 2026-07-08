@@ -12,19 +12,21 @@ import (
 	"github.com/Mykhol/becket/internal/workspace"
 )
 
-const createUsage = "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH] [--stacked-on PARENT_ID] [--setup]"
+const createUsage = "Usage: becket create <id> [--desc TEXT] [--repos r1,r2] [--base BRANCH] [--branch BRANCH] [--stacked-on PARENT_ID] [--setup]"
 
 func newCreateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "create <id> [options]",
 		Short: "Create workspace + worktrees",
-		Long: `Create a workspace and a git worktree per selected repo, all on a new
+		Long: `Create a workspace and a git worktree per selected repo, all on a
 shared feature branch.
 
 Options:
   --desc TEXT       Description (slugified into the branch name)
   --repos r1,r2     Repos to include (default: all configured repos)
   --base BRANCH     Override the base branch for all repos
+  --branch BRANCH   Use an existing branch instead of creating a new one
+                    (fetches it from origin if needed)
   --stacked-on ID   Stack on another workspace (its branches become the base)
   --setup           Run setup commands after creating`,
 		DisableFlagParsing: true,
@@ -38,7 +40,7 @@ Options:
 }
 
 func runCreate(args []string) {
-	var desc, baseOverride, reposFlag, stackParent, id string
+	var desc, baseOverride, reposFlag, stackParent, branchFlag, id string
 	runSetup := false
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
@@ -52,6 +54,8 @@ func runCreate(args []string) {
 			runSetup = true
 		case "--stacked-on":
 			stackParent, i = next(args, i), i+1
+		case "--branch":
+			branchFlag, i = next(args, i), i+1
 		default:
 			if len(a) > 0 && a[0] == '-' {
 				render.Die("Unknown option: %s", a)
@@ -61,6 +65,17 @@ func runCreate(args []string) {
 	}
 	if id == "" {
 		render.Die("%s", createUsage)
+	}
+
+	// --branch uses an existing branch verbatim, so it can't combine with
+	// options that derive or base a fresh branch.
+	if branchFlag != "" {
+		if desc != "" {
+			render.Die("Cannot combine --branch with --desc (the branch already exists).")
+		}
+		if stackParent != "" {
+			render.Die("Cannot combine --branch with --stacked-on (the branch already exists).")
+		}
 	}
 
 	p := loadPlatform()
@@ -87,6 +102,10 @@ func runCreate(args []string) {
 		branchSuffix = id + "-" + slugify(desc)
 	}
 	branch := p.Settings.BranchPrefix + branchSuffix
+	if branchFlag != "" {
+		// --branch uses an existing branch verbatim; no prefix, no slug.
+		branch = branchFlag
+	}
 
 	repos := selectRepos(p, reposFlag)
 	if len(repos) == 0 {
@@ -129,14 +148,33 @@ func runCreate(args []string) {
 			base = rc.DefaultBase
 		}
 
-		start := base
-		if stackParent == "" {
-			start = fetchedBase(repoAbs, repo, base)
-		}
-
 		wt := filepath.Join(ws, repo)
-		render.Info("Creating worktree: %s → %s (base: %s)", repo, branch, start)
-		gitOrExit(git.Run(repoAbs, "worktree", "add", "--no-track", wt, "-b", branch, start))
+		if branchFlag != "" {
+			// Best-effort fetch of the existing branch, fully silenced: a
+			// missing remote ref prints fatal noise to stderr, and we tolerate
+			// fetch failure when the branch already exists locally. We Verify
+			// afterwards. The base is not fetched here — only the branch.
+			_ = git.Quiet(repoAbs, "fetch", "origin", branchFlag)
+			switch {
+			case git.Verify(repoAbs, "refs/heads/"+branch):
+				render.Info("Creating worktree: %s → %s (existing branch, base: %s)", repo, branch, base)
+				gitOrExit(git.Run(repoAbs, "worktree", "add", wt, branch))
+			case git.Verify(repoAbs, "refs/remotes/origin/"+branch):
+				render.Info("Creating worktree: %s → %s (tracking origin/%s, base: %s)", repo, branch, branch, base)
+				gitOrExit(git.Run(repoAbs, "worktree", "add", wt, "-b", branch, "--track", "origin/"+branch))
+			default:
+				render.Die("Branch '%s' not found locally or on origin in '%s'.", branch, repo)
+			}
+		} else {
+			// New branch: start from origin/<base> after a fetch so the branch
+			// isn't silently behind origin from its first commit.
+			start := base
+			if stackParent == "" {
+				start = fetchedBase(repoAbs, repo, base)
+			}
+			render.Info("Creating worktree: %s → %s (base: %s)", repo, branch, start)
+			gitOrExit(git.Run(repoAbs, "worktree", "add", "--no-track", wt, "-b", branch, start))
+		}
 
 		m.Repos[repo] = workspace.RepoEntry{Branch: branch, Base: base}
 		m.Order = append(m.Order, repo)

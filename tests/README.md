@@ -97,6 +97,7 @@ with `go test . -run TestScripts -update` and eyeball the diff.
 | `16_discovery`       | `init` default-base detection (main vs master) |
 | `17_stack_fallback`  | stacked child where parent lacks a repo → base fallback warning |
 | `18_dev`             | `dev` (multiplexed run exits cleanly; `--repo` raw passthrough) |
+| `20_create_branch`   | `create --branch` (remote-only fetch+track, local-exists, missing-branch error, `--desc` guard) |
 
 Every dispatched command is exercised **except `pr`**, and most have
 multiple branches covered.

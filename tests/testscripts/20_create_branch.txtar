@@ -1,0 +1,140 @@
+# `becket create --branch` — create a workspace on an existing branch instead of
+# synthesising a new one. Covers the "I haven't pulled this remote branch" case:
+# the branch lives on origin but no local branch exists in the main clone.
+#
+# Also covers the local-branch-exists path and the error when the branch exists
+# nowhere. Fixtures are built inline with `exec git`, matching harness.sh.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+
+# ── push a feature branch to origin, then drop the local branch so only the
+#    remote ref remains (the "I haven't pulled this" case) ───────────────────
+exec git -C $WORK/platform/service checkout -b feature/remote-branch
+cp $WORK/payload $WORK/platform/service/PAYLOAD.md
+exec git -C $WORK/platform/service add PAYLOAD.md
+exec git -C $WORK/platform/service commit -m 'wip: remote-only work'
+exec git -C $WORK/platform/service push -u origin feature/remote-branch
+exec git -C $WORK/platform/service checkout main
+exec git -C $WORK/platform/service branch -D feature/remote-branch
+# main clone is clean on main; feature/remote-branch lives only on origin now
+
+# ── create a workspace on the existing remote branch ─────────────────────────
+exec becket create from-remote --branch feature/remote-branch --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-remote.stdout
+cmp err $WORK/create-remote.stderr
+
+# manifest: from-remote
+sanitize $WORK/platform/workspaces/from-remote/.becket.json
+cmp $WORK/platform/workspaces/from-remote/.becket.json $WORK/manifest-from-remote.json
+
+# branches: service — the local branch was recreated by `worktree add --track`
+exec git -C $WORK/platform/service branch --format='%(refname:short)'
+cp stdout out
+sanitize out
+cmp out $WORK/branches-service-remote.txt
+
+# worktrees: service — main on main, worktree on feature/remote-branch
+exec git -C $WORK/platform/service worktree list
+cp stdout out
+sanitize -squeeze out
+cmp out $WORK/worktrees-service-remote.txt
+
+# ── the workspace worktree actually contains the remote-only commit ──────────
+exec git -C $WORK/platform/workspaces/from-remote/service log --format='%s'
+cp stdout out
+sanitize out
+cmp out $WORK/log-from-remote.txt
+
+# ── refuses a branch that exists neither locally nor on origin ───────────────
+! exec becket create ghost --branch feature/nope --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/ghost.stdout
+cmp err $WORK/ghost.stderr
+
+# ── refuses to combine --branch with --desc (the branch already exists) ──────
+! exec becket create bad --branch feature/remote-branch --desc 'nope' --repos service
+cp stderr err
+sanitize err
+cmp err $WORK/bad-desc.stderr
+
+# ── local-branch-exists path: branch present locally → direct worktree add ───
+exec git -C $WORK/platform/service checkout -b feature/local-work
+cp $WORK/payload $WORK/platform/service/LOCAL.md
+exec git -C $WORK/platform/service add LOCAL.md
+exec git -C $WORK/platform/service commit -m 'wip: local work'
+exec git -C $WORK/platform/service checkout main
+
+exec becket create from-local --branch feature/local-work --repos service
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create-local.stdout
+cmp err $WORK/create-local.stderr
+
+-- readme --
+# repo
+-- payload --
+payload
+-- create-remote.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/from-remote
+▸ Creating worktree: service → feature/remote-branch (tracking origin/feature/remote-branch, base: main)
+branch 'feature/remote-branch' set up to track 'origin/feature/remote-branch'.
+HEAD is now at <SHA> wip: remote-only work
+
+▸ Workspace from-remote ready at <SANDBOX>/platform/workspaces/from-remote
+▸ Branch: feature/remote-branch
+-- create-remote.stderr --
+Preparing worktree (new branch 'feature/remote-branch')
+-- manifest-from-remote.json --
+{
+  "$schema": "./workspace.schema.json",
+  "id": "from-remote",
+  "created": "<DATE>",
+  "description": "",
+  "repos": {
+    "service": {
+      "branch": "feature/remote-branch",
+      "base": "main"
+    }
+  }
+}
+-- branches-service-remote.txt --
+feature/remote-branch
+main
+-- worktrees-service-remote.txt --
+<SANDBOX>/platform/service <SHA> [main]
+<SANDBOX>/platform/workspaces/from-remote/service <SHA> [feature/remote-branch]
+-- log-from-remote.txt --
+wip: remote-only work
+init service
+-- ghost.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/ghost
+-- ghost.stderr --
+error: Branch 'feature/nope' not found locally or on origin in 'service'.
+-- bad-desc.stderr --
+error: Cannot combine --branch with --desc (the branch already exists).
+-- create-local.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/from-local
+▸ Creating worktree: service → feature/local-work (existing branch, base: main)
+HEAD is now at <SHA> wip: local work
+
+▸ Workspace from-local ready at <SANDBOX>/platform/workspaces/from-local
+▸ Branch: feature/local-work
+-- create-local.stderr --
+Preparing worktree (checking out 'feature/local-work')

@@ -34,6 +34,7 @@ Workspace: proj-42 — dark mode
 - **Cross-repo status at a glance** — branch, clean/dirty, ahead/behind, and last commit for every repo together.
 - **Stacked features** — build a feature on top of another's branches (`--stacked-on`) and `restack` onto the parent's latest tips.
 - **Adopt existing work** — wrap branches you've already started into a workspace without losing changes.
+- **Resume a remote branch** — `becket create <id> --branch <name>` spins up a workspace on a branch that already exists on origin (fetched if you haven't pulled it), without touching the main clone's working state.
 - **Sync & ship** — `sync`, `push`, `log`, and `pr` (GitHub) operate across all repos at once.
 - **Single static binary** — no runtime dependencies beyond `git`.
 
@@ -120,7 +121,7 @@ and repairing their git worktree links.
 | Command | Description |
 |---|---|
 | `init` | Scan the current directory for repos and write `.becket/settings.json` |
-| `create <id> [flags]` | Create a workspace and a worktree per repo (`--desc`, `--repos`, `--base`, `--stacked-on`, `--setup`) |
+| `create <id> [flags]` | Create a workspace and a worktree per repo (`--desc`, `--repos`, `--base`, `--branch`, `--stacked-on`, `--setup`) |
 | `adopt <id> [flags]` | Wrap each repo's existing branch into a new workspace |
 | `add [id] <repo>` | Add a repo to an existing workspace |
 | `list [--output json]` | List active workspaces |
