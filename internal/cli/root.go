@@ -30,8 +30,8 @@ var commandGroups = []*cobra.Group{
 // groupOf maps each command name to its help group.
 var groupOf = map[string]string{
 	"init": "platform", "list": "platform", "stats": "platform", "upgrade": "platform",
-	"create": "workspace", "adopt": "workspace", "add": "workspace", "teardown": "workspace",
-	"shell": "develop", "shell-init": "develop", "dev": "develop", "setup": "develop",
+	"create": "workspace", "adopt": "workspace", "add": "workspace", "teardown": "workspace", "gc": "workspace",
+	"shell": "develop", "shell-init": "develop", "dev": "develop", "setup": "develop", "deps": "develop",
 	"status": "ship", "desc": "ship", "log": "ship", "sync": "ship",
 	"restack": "ship", "push": "ship", "pr": "ship",
 }
@@ -83,7 +83,9 @@ func Execute(version string, schemaFS embed.FS) {
 		newAdoptCmd(),
 		newAddCmd(),
 		newTeardownCmd(),
+		newGCCmd(),
 		newSetupCmd(),
+		newDepsCmd(),
 		newShellCmd(),
 		newShellInitCmd(),
 		newSyncCmd(),

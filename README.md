@@ -36,6 +36,8 @@ Workspace: proj-42 — dark mode
 - **Adopt existing work** — wrap branches you've already started into a workspace without losing changes.
 - **Resume a remote branch** — `becket create <id> --branch <name>` spins up a workspace on a branch that already exists on origin (fetched if you haven't pulled it), without touching the main clone's working state.
 - **Sync & ship** — `sync`, `push`, `log`, and `pr` (GitHub) operate across all repos at once.
+- **Canonical dependency installs** — `becket deps` runs each repo's configured install and skips it when the lockfiles haven't changed, so agents and humans stop hand-rolling `uv sync`/`pnpm install` variants.
+- **Garbage collection** — `becket gc` removes merged, empty, and idle disposable workspaces, and prunes dependency directories from ones it keeps but that have sat idle.
 - **Single static binary** — no runtime dependencies beyond `git`.
 
 ## Install
@@ -72,12 +74,18 @@ Run `becket init` once in the directory that holds your repo clones (your
 ```bash
 becket init                                   # discover repos, write .becket/settings.json
 becket create proj-42 --desc "dark mode"      # workspace + a worktree per repo
+becket deps proj-42                            # install each repo's dependencies
 becket status proj-42                          # branch status across all repos
 becket add proj-42 api                         # bring another repo into the workspace
 becket sync proj-42                            # rebase every repo onto its base branch
 becket push proj-42 && becket pr proj-42       # push branches, open PRs
 becket teardown proj-42 --delete-branches      # remove worktrees + branches
+becket gc --apply                              # clean up merged/idle workspaces
 ```
+
+`create` never installs dependencies unless you pass `--setup` (which also runs
+setup commands) — run `becket deps` yourself, inside the workspace or a single
+repo, whenever you're ready.
 
 Add shell integration to your `~/.zshrc` / `~/.bashrc` so `becket shell <id>`
 changes directory and tab-completion works:
@@ -116,6 +124,29 @@ to relocate the workspaces directory (default `workspaces/`), and `docker` /
 including moving workspaces out of the pre-1.x `.becket/workspaces/` location
 and repairing their git worktree links.
 
+A per-repo `deps` block is the canonical, idempotent dependency install for
+`becket deps` (and, unforced, runs before that repo's `setup` commands):
+
+```json
+"deps": {
+  "run": ["pnpm install --frozen-lockfile"],
+  "lockfiles": ["pnpm-lock.yaml"],
+  "dirs": ["node_modules"]
+}
+```
+
+`run` are the install commands; `lockfiles` are paths (relative to the
+worktree) whose contents key the install, so a changed lockfile re-triggers
+it; `dirs` are the resulting dependency directories (globs allowed, e.g.
+`"apps/*/node_modules"`), which `becket gc` may prune once a workspace has sat
+idle.
+
+A top-level `gc` block tunes `becket gc`: `disposable` (workspace-id globs
+treated as throwaway, default `["spike-*", "*review*"]`), `idleDays` (days
+idle before a disposable or no-work workspace is removed, default `3`), and
+`depsIdleDays` (days idle before a kept workspace's dependency directories are
+pruned, default `2`).
+
 ## Command reference
 
 | Command | Description |
@@ -132,8 +163,10 @@ and repairing their git worktree links.
 | `restack [id]` | Rebase a stacked workspace onto its parent's tips |
 | `push [id]` / `pr [id]` / `log [id]` | Push branches / open GitHub PRs / show commits |
 | `setup [id]` / `dev [id] [--repo NAME]` | Run setup commands / run repos' dev commands in the foreground |
+| `deps [id] [--repo NAME] [--force]` | Install a workspace's dependencies (skips repos whose lockfiles haven't changed) |
 | `shell [id]` / `shell-init` | Print a workspace path / emit shell integration |
 | `teardown [id] [--delete-branches]` | Remove a workspace's worktrees (and branches) |
+| `gc [--apply] [--idle-days N] [--deps-idle-days M]` | Remove merged/idle workspaces and prune stale dependency dirs (dry run by default) |
 | `upgrade` / `stats` | Migrate config & schemas, refresh workspace `AGENTS.md`s / show local usage stats |
 
 Run `becket <command> --help` for full flag details.

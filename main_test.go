@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
 )
@@ -176,6 +178,26 @@ func TestScripts(t *testing.T) {
 					out := normalize(s, work, workReal)
 					ts.Check(os.WriteFile(p, []byte(out), 0o644))
 				}
+			},
+			// futurenow <env> <days>: set an env var to now + <days>, in RFC3339.
+			// Used by the gc tests to make fixture workspaces reliably idle without
+			// depending on (and having to normalize away) the wall-clock date.
+			"futurenow": func(ts *testscript.TestScript, neg bool, args []string) {
+				if neg {
+					ts.Fatalf("unsupported: ! futurenow")
+				}
+				if len(args) != 2 {
+					ts.Fatalf("usage: futurenow <env> <days>")
+				}
+				days, err := strconv.Atoi(args[1])
+				ts.Check(err)
+				// RFC3339 truncates to whole seconds; round the target up to the next
+				// second first so the serialized value never lands earlier than a
+				// file mtime taken this same instant (which carries sub-second
+				// precision) — otherwise a fixture's "idle days" flips by one
+				// depending on where in the current second this command runs.
+				target := time.Now().UTC().Add(time.Duration(days) * 24 * time.Hour).Add(time.Second).Truncate(time.Second)
+				ts.Setenv(args[0], target.Format(time.RFC3339))
 			},
 		},
 	})

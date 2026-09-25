@@ -67,10 +67,24 @@ func writeAgentsMD(wsPath string, m *workspace.Manifest, settings config.Setting
 	}
 	w("")
 
+	hasDeps := false
+	for _, name := range m.Order {
+		if settings.Repos[name].Deps != nil {
+			hasDeps = true
+			break
+		}
+	}
+	if hasDeps {
+		w("## Dependencies")
+		w("")
+		w("Dependencies are not installed when the workspace is created. Before running a repo's code — tests, scripts, a dev server — run `becket deps` from inside that repo's directory. It installs with the canonical command and does nothing when the lockfiles have not changed, so run it freely. Never run the package manager's install (`pnpm install`, `uv sync`, `npm install`) yourself: the flags drift and can strip required extras. Read-only work (reading code, reviewing) needs no dependencies.")
+		w("")
+	}
+
 	hasCommands := false
 	for _, name := range m.Order {
 		rc := settings.Repos[name]
-		if len(rc.Setup) > 0 || rc.Dev != "" {
+		if len(rc.Setup) > 0 || rc.Dev != "" || rc.Deps != nil {
 			hasCommands = true
 			break
 		}
@@ -80,11 +94,20 @@ func writeAgentsMD(wsPath string, m *workspace.Manifest, settings config.Setting
 		w("")
 		for _, name := range m.Order {
 			rc := settings.Repos[name]
-			if len(rc.Setup) == 0 && rc.Dev == "" {
+			if len(rc.Setup) == 0 && rc.Dev == "" && rc.Deps == nil {
 				continue
 			}
 			w("### " + name)
 			w("")
+			if rc.Deps != nil {
+				w("**Dependencies:** `becket deps`")
+				w("```bash")
+				for _, c := range rc.Deps.Run {
+					w(c)
+				}
+				w("```")
+				w("")
+			}
 			if len(rc.Setup) > 0 {
 				w("**Setup:**")
 				w("```bash")
@@ -118,12 +141,16 @@ func writeAgentsMD(wsPath string, m *workspace.Manifest, settings config.Setting
 	w("")
 	w("## Troubleshooting")
 	w("")
-	w("Environment drift is almost always fixed by re-running the repos' setup commands: `becket setup " + m.ID + "`.")
+	w("Environment drift is almost always fixed by reinstalling dependencies: `becket deps --force` (run inside the affected repo). `becket setup " + m.ID + "` re-runs env files and hooks, if configured.")
 	w("")
-	w("- **Imports or optional dependencies missing** after running package-manager commands directly — e.g. a bare `uv run`/`uv sync` re-syncs the venv *without* the extras the setup commands install. Re-run `becket setup " + m.ID + "`.")
-	w("- **`bad interpreter` errors, or tool shebangs pointing at a path that no longer exists** — the virtualenv predates a workspace move (venvs embed absolute paths). Re-run `becket setup " + m.ID + "` to recreate it.")
+	w("- **Imports or optional dependencies missing** after running package-manager commands directly — e.g. a bare `uv run`/`uv sync` re-syncs the venv *without* the extras `deps.run` installs. Re-run `becket deps --force`.")
+	w("- **`bad interpreter` errors, or tool shebangs pointing at a path that no longer exists** — the virtualenv predates a workspace move (venvs embed absolute paths). Re-run `becket deps --force` to recreate it.")
 	w("- **Imports resolving to a deleted package after `becket sync`/`restack`** — a package deleted upstream can survive locally as an orphaned `__pycache__` that shadows imports. becket removes pure-cache orphans after each rebase; if imports still misresolve, check `git status --ignored`.")
 	w("- **Branch starts behind origin** — the workspace was created from a stale local base by an older becket. `becket sync " + m.ID + "` rebases every repo onto `origin/<base>`.")
+	w("")
+	w("## When you're done")
+	w("")
+	w("Spike and review workspaces are throwaway: `becket teardown " + m.ID + " --delete-branches` when the question is answered. `becket gc` removes merged, empty and idle throwaway workspaces and drops dependency folders from idle ones; nothing with uncommitted or unpushed work is ever removed.")
 	w("")
 
 	_ = os.WriteFile(filepath.Join(wsPath, "AGENTS.md"), []byte(b.String()), 0o644)

@@ -1,0 +1,242 @@
+# `becket deps` — the canonical, idempotent dependency install per repo, keyed
+# by its run commands + lockfile contents, stamped outside the git worktree.
+# Also covers `create` (no --setup) printing the "not installed" hint and
+# `setup` running deps before its own commands.
+#
+# Fixtures mirror harness.sh setup_platform: three repos (service, admin, docs),
+# each a clone of a bare origin with a seeded commit on main. service and admin
+# carry a `deps` block (admin also has `setup`); docs has neither, to exercise
+# the "no deps configured" skip. The init-generated config is replaced with one
+# carrying these blocks (same pattern as 11_setup_files.txtar).
+
+mkdir platform origins
+
+# mk_repo service (has deps)
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+cp lock-v1 platform/service/package-lock.txt
+exec git -C platform/service add README.md package-lock.txt
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+# mk_repo admin (has deps + setup)
+exec git init --bare origins/admin.git
+exec git clone origins/admin.git platform/admin
+cp readme platform/admin/README.md
+cp lock-v1 platform/admin/admin-lock.txt
+exec git -C platform/admin add README.md admin-lock.txt
+exec git -C platform/admin commit -m 'init admin'
+exec git -C platform/admin push -u origin main
+
+# mk_repo docs (no deps, no setup)
+exec git init --bare origins/docs.git
+exec git clone origins/docs.git platform/docs
+cp readme platform/docs/README.md
+exec git -C platform/docs add README.md
+exec git -C platform/docs commit -m 'init docs'
+exec git -C platform/docs push -u origin main
+
+cd platform
+exec becket init
+
+# Replace the init-generated config with one carrying deps + setup blocks.
+cp $WORK/settings-src $WORK/platform/.becket/settings.json
+
+# ── create without --setup: hint that dependencies still need installing ─────────
+exec becket create feat --repos service,admin,docs
+cp stdout out
+cp stderr err
+sanitize out err
+cmp out $WORK/create.stdout
+cmp err $WORK/create.stderr
+
+# ── first `deps` run: installs service + admin, skips docs (no deps configured) ──
+exec becket deps feat
+cp stdout out
+sanitize out
+cmp out $WORK/deps-1.stdout
+
+exists $WORK/platform/workspaces/feat/.becket/deps/service.json
+exists $WORK/platform/workspaces/feat/.becket/deps/admin.json
+exists $WORK/platform/workspaces/feat/service/node_modules
+exists $WORK/platform/workspaces/feat/admin/admin_deps
+
+# the stamp lives outside the git worktree, so it never dirties git status
+cd $WORK/platform/workspaces/feat/service
+exec git status --porcelain
+stdout '^$'
+cd $WORK/platform
+
+# ── second run: both stamps are current, so nothing is re-run ────────────────────
+exec becket deps feat
+cp stdout out
+sanitize out
+cmp out $WORK/deps-2.stdout
+
+# ── changing a lockfile invalidates just that repo's stamp ───────────────────────
+cp $WORK/lock-v2 $WORK/platform/workspaces/feat/service/package-lock.txt
+exec becket deps feat
+cp stdout out
+sanitize out
+cmp out $WORK/deps-3.stdout
+
+# ── --force reinstalls even when up to date ───────────────────────────────────────
+exec becket deps feat --force
+cp stdout out
+sanitize out
+cmp out $WORK/deps-4.stdout
+
+# ── --repo selects a single repo ──────────────────────────────────────────────────
+exec becket deps feat --repo service
+cp stdout out
+sanitize out
+cmp out $WORK/deps-repo.stdout
+
+# ── cwd inside a repo's worktree selects just that repo (id detected too) ────────
+cd $WORK/platform/workspaces/feat/admin
+exec becket deps
+cp stdout out
+sanitize out
+cmp out $WORK/deps-cwd.stdout
+cd $WORK/platform
+
+# ── setup runs deps (unforced) for each repo before its setup commands ───────────
+exec becket setup feat
+cp stdout out
+sanitize out
+cmp out $WORK/setup.stdout
+
+# ── a failing run command exits non-zero and leaves no stamp ─────────────────────
+cd $WORK
+mkdir origins2
+exec git init --bare origins2/broken.git
+exec git clone origins2/broken.git platform2/broken
+cp readme platform2/broken/README.md
+exec git -C platform2/broken add README.md
+exec git -C platform2/broken commit -m 'init broken'
+exec git -C platform2/broken push -u origin main
+
+cd $WORK/platform2
+exec becket init
+cp $WORK/settings-broken $WORK/platform2/.becket/settings.json
+
+exec becket create feat --repos broken
+
+! exec becket deps feat
+cp stdout out
+sanitize out
+cmp out $WORK/deps-fail.stdout
+
+! exists $WORK/platform2/workspaces/feat/.becket/deps/broken.json
+
+-- readme --
+# repo
+-- lock-v1 --
+lockfile v1
+-- lock-v2 --
+lockfile v2
+-- settings-broken --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "broken": {
+      "path": "./broken",
+      "defaultBase": "main",
+      "deps": {
+        "run": ["exit 1"]
+      }
+    }
+  },
+  "branchPrefix": "feature/"
+}
+-- settings-src --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "admin": {
+      "path": "./admin",
+      "defaultBase": "main",
+      "setup": ["echo admin setup"],
+      "deps": {
+        "run": ["echo installing admin && mkdir -p admin_deps"],
+        "lockfiles": ["admin-lock.txt"],
+        "dirs": ["admin_deps"]
+      }
+    },
+    "service": {
+      "path": "./service",
+      "defaultBase": "main",
+      "deps": {
+        "run": ["echo installing service && mkdir -p node_modules"],
+        "lockfiles": ["package-lock.txt"],
+        "dirs": ["node_modules"]
+      }
+    },
+    "docs": {
+      "path": "./docs",
+      "defaultBase": "main"
+    }
+  },
+  "branchPrefix": "feature/"
+}
+-- create.stdout --
+▸ Created workspace: <SANDBOX>/platform/workspaces/feat
+▸ Creating worktree: service → feature/feat (base: origin/main)
+HEAD is now at <SHA> init service
+▸ Creating worktree: admin → feature/feat (base: origin/main)
+HEAD is now at <SHA> init admin
+▸ Creating worktree: docs → feature/feat (base: origin/main)
+HEAD is now at <SHA> init docs
+
+▸ Workspace feat ready at <SANDBOX>/platform/workspaces/feat
+▸ Branch: feature/feat
+▸ Dependencies not installed. Run 'becket deps' inside a repo before running its code.
+-- create.stderr --
+Preparing worktree (new branch 'feature/feat')
+Preparing worktree (new branch 'feature/feat')
+Preparing worktree (new branch 'feature/feat')
+-- deps-1.stdout --
+▸ Installing deps for service...
+▸   Running: echo installing service && mkdir -p node_modules
+installing service
+▸ Installing deps for admin...
+▸   Running: echo installing admin && mkdir -p admin_deps
+installing admin
+▸ No deps configured for docs, skipping.
+-- deps-2.stdout --
+▸ service dependencies up to date.
+▸ admin dependencies up to date.
+▸ No deps configured for docs, skipping.
+-- deps-3.stdout --
+▸ Installing deps for service...
+▸   Running: echo installing service && mkdir -p node_modules
+installing service
+▸ admin dependencies up to date.
+▸ No deps configured for docs, skipping.
+-- deps-4.stdout --
+▸ Installing deps for service...
+▸   Running: echo installing service && mkdir -p node_modules
+installing service
+▸ Installing deps for admin...
+▸   Running: echo installing admin && mkdir -p admin_deps
+installing admin
+▸ No deps configured for docs, skipping.
+-- deps-repo.stdout --
+▸ service dependencies up to date.
+-- deps-cwd.stdout --
+▸ admin dependencies up to date.
+-- setup.stdout --
+▸ service dependencies up to date.
+▸ No setup commands for service, skipping.
+▸ admin dependencies up to date.
+▸ Setting up admin...
+▸   Running: echo admin setup
+admin setup
+▸ No setup commands for docs, skipping.
+
+▸ Setup complete for workspace feat.
+-- deps-fail.stdout --
+▸ Installing deps for broken...
+▸   Running: exit 1
+▸   Command failed: exit 1

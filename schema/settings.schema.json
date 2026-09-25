@@ -31,6 +31,29 @@
               "type": "string"
             }
           },
+          "deps": {
+            "type": "object",
+            "description": "Canonical, idempotent dependency install, run by 'becket deps' and before this repo's setup commands.",
+            "required": ["run"],
+            "properties": {
+              "run": {
+                "type": "array",
+                "description": "Commands that install dependencies, run in the worktree with the repo's env.",
+                "items": { "type": "string" }
+              },
+              "lockfiles": {
+                "type": "array",
+                "description": "Paths, relative to the worktree, whose contents key the install; a changed lockfile re-triggers it.",
+                "items": { "type": "string" }
+              },
+              "dirs": {
+                "type": "array",
+                "description": "Dependency directories, relative to the worktree, that 'becket gc' may prune once idle (path.Match globs allowed, e.g. \"apps/*/node_modules\").",
+                "items": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
+          },
           "dev": {
             "type": "string",
             "description": "Command to start the dev server (sent to a tmux window by 'becket dev')."
@@ -70,6 +93,26 @@
     "session": {
       "type": "string",
       "description": "Tmux session name for 'becket dev'. Defaults to the workspace ID."
+    },
+    "gc": {
+      "type": "object",
+      "description": "Tuning for 'becket gc'.",
+      "properties": {
+        "disposable": {
+          "type": "array",
+          "description": "Workspace-id globs treated as throwaway. Defaults to [\"spike-*\", \"*review*\"].",
+          "items": { "type": "string" }
+        },
+        "idleDays": {
+          "type": "integer",
+          "description": "Days idle before a disposable or no-work workspace is eligible for removal. Defaults to 3."
+        },
+        "depsIdleDays": {
+          "type": "integer",
+          "description": "Days idle before a kept workspace's dependency directories are pruned. Defaults to 2."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

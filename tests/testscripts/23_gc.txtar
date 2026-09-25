@@ -1,0 +1,164 @@
+# `becket gc` — dry-run by default; removes safe+eligible workspaces and prunes
+# stale dependency dirs from idle ones it keeps.
+#
+# One repo (service) is reused across several workspaces so each scenario is
+# just "make this workspace's git state look like X, then check gc's verdict":
+#   spike-old            disposable name, ahead of base + pushed, clean  -> remove (disposable)
+#   mul-9                ticket name, no commits past base, clean       -> remove (no-work)
+#   mul-7                ticket name, no-work-eligible but dirty        -> keep (dirty)
+#   spike-unpushed        disposable name, local-only commit            -> keep (unpushed)
+#   spike-parent          disposable name, stacked-on by a child        -> keep (has stack children)
+#   spike-parent-child   stacked on spike-parent, clean + pushed        -> remove
+#   proj-42-deps          ticket name, ahead + pushed (not eligible),
+#                          idle past deps-idle-days                      -> prune node_modules/.venv/apps/*/node_modules
+#
+# `futurenow` (a test-only testscript command, see main_test.go) sets
+# BECKET_NOW to real-now + N days, so every workspace is idle without having
+# to fake file mtimes or depend on (and normalize away) the wall-clock date.
+# `gh` has no GitHub remote to talk to here, so every PR lookup is "unknown" —
+# exactly the case the merged-rule must treat as not-eligible, not an error.
+
+mkdir platform origins
+
+# mk_repo service
+exec git init --bare origins/service.git
+exec git clone origins/service.git platform/service
+cp readme platform/service/README.md
+exec git -C platform/service add README.md
+exec git -C platform/service commit -m 'init service'
+exec git -C platform/service push -u origin main
+
+cd platform
+exec becket init
+cp $WORK/settings-src $WORK/platform/.becket/settings.json
+
+# ── spike-old: disposable name, one pushed commit ahead of base ──────────────────
+exec becket create spike-old --repos service
+cd $WORK/platform/workspaces/spike-old/service
+cp $WORK/change CHANGE.md
+exec git add CHANGE.md
+exec git commit -m 'small change'
+exec git push -u origin feature/spike-old
+cd $WORK/platform
+
+# ── mul-9: ticket name, still exactly at base (no-work) ──────────────────────────
+exec becket create mul-9 --repos service
+
+# ── mul-7: ticket name, no-work-eligible but dirty (uncommitted edit) ────────────
+exec becket create mul-7 --repos service
+cp $WORK/change $WORK/platform/workspaces/mul-7/service/CHANGE.md
+
+# ── spike-unpushed: disposable name, local-only commit (unpushed) ────────────────
+exec becket create spike-unpushed --repos service
+cd $WORK/platform/workspaces/spike-unpushed/service
+cp $WORK/change CHANGE.md
+exec git add CHANGE.md
+exec git commit -m 'local only'
+cd $WORK/platform
+
+# ── spike-parent (+ a pushed, clean child stacked on it) ─────────────────────────
+exec becket create spike-parent --repos service
+exec becket create spike-parent-child --repos service --stacked-on spike-parent
+cd $WORK/platform/workspaces/spike-parent-child/service
+exec git push -u origin feature/spike-parent-child
+cd $WORK/platform
+
+# ── proj-42-deps: ticket name, ahead + pushed (not eligible for removal),
+# with installed dependency dirs (incl. a glob match) to prune once idle ─────────
+exec becket create proj-42-deps --repos service
+cd $WORK/platform/workspaces/proj-42-deps/service
+cp $WORK/change CHANGE.md
+exec git add CHANGE.md
+exec git commit -m 'work in progress'
+exec git push -u origin feature/proj-42-deps
+mkdir node_modules .venv apps/web/node_modules
+cd $WORK/platform
+mkdir $WORK/platform/workspaces/proj-42-deps/.becket/deps
+cp $WORK/stamp $WORK/platform/workspaces/proj-42-deps/.becket/deps/service.json
+
+futurenow BECKET_NOW 10
+
+# ── dry run: reports the plan, changes nothing ────────────────────────────────────
+exec becket gc
+cp stdout out
+sanitize out
+cmp out $WORK/gc-dry.stdout
+
+exists $WORK/platform/workspaces/spike-old
+exists $WORK/platform/workspaces/mul-9
+exists $WORK/platform/workspaces/mul-7
+exists $WORK/platform/workspaces/spike-unpushed
+exists $WORK/platform/workspaces/spike-parent
+exists $WORK/platform/workspaces/spike-parent-child
+exists $WORK/platform/workspaces/proj-42-deps/service/node_modules
+exists $WORK/platform/workspaces/proj-42-deps/.becket/deps/service.json
+
+# ── --apply executes it ───────────────────────────────────────────────────────────
+exec becket gc --apply
+cp stdout out
+sanitize out
+cmp out $WORK/gc-apply.stdout
+
+! exists $WORK/platform/workspaces/spike-old
+! exists $WORK/platform/workspaces/mul-9
+! exists $WORK/platform/workspaces/spike-parent-child
+exists $WORK/platform/workspaces/mul-7
+exists $WORK/platform/workspaces/spike-unpushed
+exists $WORK/platform/workspaces/spike-parent
+exists $WORK/platform/workspaces/proj-42-deps
+
+! exists $WORK/platform/workspaces/proj-42-deps/service/node_modules
+! exists $WORK/platform/workspaces/proj-42-deps/service/.venv
+! exists $WORK/platform/workspaces/proj-42-deps/service/apps/web/node_modules
+! exists $WORK/platform/workspaces/proj-42-deps/.becket/deps/service.json
+
+-- gc-dry.stdout --
+keep    mul-7               dirty: service
+remove  mul-9               no-work, idle 10d
+prune   proj-42-deps        deps idle 10d: node_modules, .venv, apps/*/node_modules
+remove  spike-old           disposable, idle 10d
+remove  spike-parent-child  no-work, idle 10d
+keep    spike-parent        has stack children
+keep    spike-unpushed      unpushed: service
+
+3 to remove, 1 to prune — dry run, pass --apply
+-- gc-apply.stdout --
+▸ Removing worktree: service
+▸ Deleting branch: feature/mul-9 from service
+Deleted branch feature/mul-9 (was <SHA>).
+▸ Removing worktree: service
+▸ Deleting branch: feature/spike-old from service
+Deleted branch feature/spike-old (was <SHA>).
+▸ Removing worktree: service
+▸ Deleting branch: feature/spike-parent-child from service
+Deleted branch feature/spike-parent-child (was <SHA>).
+keep    mul-7               dirty: service
+remove  mul-9               no-work, idle 10d
+prune   proj-42-deps        deps idle 10d: node_modules, .venv, apps/*/node_modules
+remove  spike-old           disposable, idle 10d
+remove  spike-parent-child  no-work, idle 10d
+keep    spike-parent        has stack children
+keep    spike-unpushed      unpushed: service
+
+3 removed, 1 pruned.
+-- readme --
+# repo
+-- change --
+a small change
+-- stamp --
+{"key":"stale","installedAt":"2020-01-01T00:00:00Z"}
+-- settings-src --
+{
+  "$schema": "./settings.schema.json",
+  "repos": {
+    "service": {
+      "path": "./service",
+      "defaultBase": "main",
+      "deps": {
+        "run": ["echo installing"],
+        "dirs": ["node_modules", ".venv", "apps/*/node_modules"]
+      }
+    }
+  },
+  "branchPrefix": "feature/"
+}

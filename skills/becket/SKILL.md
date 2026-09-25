@@ -5,11 +5,13 @@ description: >-
   becket groups per-repo git worktrees (all on one shared feature
   branch) into a "workspace" and manages their lifecycle: create/adopt/teardown
   workspaces, show cross-repo branch status, add repos, sync/rebase, stack
-  features and restack, and push branches or open PRs. Use this when the working
-  directory is managed by becket (a .becket/settings.json platform config or a
-  .becket.json workspace manifest is present), when the becket command is on
-  PATH, or when the user asks to create, inspect, sync, stack, or tear down
-  cross-repo feature workspaces or worktrees.
+  features and restack, install each repo's dependencies, garbage-collect
+  merged/idle workspaces, and push branches or open PRs. Use this when the
+  working directory is managed by becket (a .becket/settings.json platform
+  config or a .becket.json workspace manifest is present), when the becket
+  command is on PATH, or when the user asks to create, inspect, sync, stack,
+  install dependencies for, clean up, or tear down cross-repo feature
+  workspaces or worktrees.
 ---
 
 # becket
@@ -59,6 +61,11 @@ that `AGENTS.md` when you start work inside a workspace.
   — set the description / set or clear a status note.
 - `becket teardown [id] [--delete-branches]` — remove the worktrees (and
   optionally the branches) and the workspace dir.
+- `becket gc [--apply] [--idle-days N] [--deps-idle-days M]` — remove merged,
+  empty (no-work), and idle disposable workspaces, and prune dependency
+  directories from idle ones it keeps. Dry-run by default — pass `--apply` to
+  act. Never removes the current workspace, a workspace with a stack child,
+  or one with uncommitted or unpushed work.
 
 **Sync / ship**
 - `becket sync [id]` — rebase every repo onto its base branch.
@@ -69,7 +76,12 @@ that `AGENTS.md` when you start work inside a workspace.
 - `becket log [id]` — commits per repo since branching.
 
 **Develop**
-- `becket setup [id]` — run each repo's configured setup commands.
+- `becket deps [id] [--repo NAME] [--force]` — install a repo's dependencies
+  with its canonical command; a no-op when the lockfiles haven't changed, so
+  run it freely instead of the package manager directly. `create` never
+  installs dependencies unless `--setup` is passed — run this yourself first.
+- `becket setup [id]` — run each repo's configured setup commands (also runs
+  `deps` first for repos that configure it).
 - `becket dev [id] [--repo NAME]` — run repos' `dev` commands in the foreground:
   all at once with per-repo-prefixed output (Ctrl-C stops all), or just one with
   `--repo`. Starts docker services first if configured.
@@ -86,14 +98,19 @@ run `becket restack child` to rebase the child onto the parent's new tips.
 ## Typical workflow
 
 ```bash
-becket create proj-42 --desc "dark mode" --repos web,api --setup   # create + env
+becket create proj-42 --desc "dark mode" --repos web,api    # create workspace
 becket shell proj-42                                        # cd in (with shell-init)
+becket deps                                                 # install deps for the repo you're in
 # … edit + commit in each repo's worktree …
 becket status proj-42                                       # check across repos
 becket sync proj-42                                         # rebase onto base
 becket push proj-42 && becket pr proj-42                    # ship
 becket teardown proj-42 --delete-branches                   # clean up
 ```
+
+`create` never installs dependencies (`--setup` also runs setup commands, but
+is not the default) — run `becket deps` yourself once you're ready to run a
+repo's code.
 
 ### Resume an existing remote branch
 
@@ -109,23 +126,23 @@ becket shell mul-2418
 
 ## Failure modes to pre-empt
 
-Environment drift inside a workspace is almost always fixed by re-running the
-repos' configured setup commands: `becket setup [id]`.
+Environment drift inside a workspace is almost always fixed by reinstalling
+dependencies: `becket deps --force` (run inside the affected repo).
 
 - **Branch starts behind origin** — becket branches new worktrees from
   `origin/<base>` (fetched at create), but a workspace created by an older
   becket, offline, or from a repo without a remote starts from the local base,
   which may be stale. If `becket status` shows the branch behind, or the code
   predates recent merges, run `becket sync` (rebases onto `origin/<base>`).
-- **Optional dependencies vanish** — the setup commands are the canonical way
-  to build each repo's environment. Package-manager commands run directly can
-  silently undo them (e.g. a bare `uv run`/`uv sync` re-syncs the venv without
-  the extras the setup installed). If imports that worked stop resolving,
-  re-run `becket setup` instead of debugging the interpreter.
+- **Optional dependencies vanish** — `deps.run` is the canonical way to build
+  each repo's environment. Package-manager commands run directly can silently
+  undo them (e.g. a bare `uv run`/`uv sync` re-syncs the venv without the
+  extras `deps.run` installs). If imports that worked stop resolving, re-run
+  `becket deps --force` instead of debugging the interpreter.
 - **`bad interpreter` / shebangs pointing at a dead path** — virtualenvs embed
   absolute paths, so a venv created before a workspace was moved (e.g. the
   pre-1.x `.becket/workspaces/` → `workspaces/` migration) breaks afterwards.
-  Recreate it with `becket setup`.
+  Recreate it with `becket deps --force`.
 - **Imports resolve to a deleted package after rebase** — a package removed
   upstream can survive locally as an orphaned `__pycache__` dir that shadows
   imports. `becket sync`/`restack` delete pure-cache orphans automatically; if

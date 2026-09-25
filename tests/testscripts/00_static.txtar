@@ -82,9 +82,11 @@ Workspace Commands:
   add         Add a repo to an existing workspace
   adopt       Adopt existing branches into a new workspace
   create      Create workspace + worktrees
+  gc          Remove merged/idle workspaces and prune stale dependency dirs
   teardown    Remove worktrees + workspace
 
 Develop Commands:
+  deps        Install a workspace's dependencies
   dev         Run repos' dev commands (concurrently, in the foreground)
   setup       Run setup commands for workspace repos
   shell       Print workspace directory path (use with shell-init)

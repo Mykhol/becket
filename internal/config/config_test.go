@@ -513,6 +513,77 @@ func TestRepoConfig_JSONShape(t *testing.T) {
 	}
 }
 
+func TestDepsConfig_JSONShape(t *testing.T) {
+	// Field order is run, lockfiles, dirs. run has no omitempty (always
+	// present, even as an empty array); lockfiles and dirs carry omitempty.
+	tests := []struct {
+		name string
+		in   DepsConfig
+		want string
+	}{
+		{
+			name: "all fields populated",
+			in: DepsConfig{
+				Run:       []string{"pnpm install"},
+				Lockfiles: []string{"pnpm-lock.yaml"},
+				Dirs:      []string{"node_modules"},
+			},
+			want: `{"run":["pnpm install"],"lockfiles":["pnpm-lock.yaml"],"dirs":["node_modules"]}`,
+		},
+		{
+			name: "omitempty drops lockfiles/dirs; run still emitted when nil",
+			in:   DepsConfig{},
+			want: `{"run":null}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("Marshal error = %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("Marshal =\n  %s\nwant\n  %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGCConfig_JSONShape(t *testing.T) {
+	idle := 3
+	tests := []struct {
+		name string
+		in   GCConfig
+		want string
+	}{
+		{
+			name: "all fields populated",
+			in: GCConfig{
+				Disposable:   []string{"spike-*"},
+				IdleDays:     &idle,
+				DepsIdleDays: &idle,
+			},
+			want: `{"disposable":["spike-*"],"idleDays":3,"depsIdleDays":3}`,
+		},
+		{
+			name: "nil pointers and empty slice all omitted",
+			in:   GCConfig{},
+			want: `{}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("Marshal error = %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("Marshal =\n  %s\nwant\n  %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRepoConfig_RoundTrip(t *testing.T) {
 	// Unmarshal -> Marshal should be stable for a fully-populated entry.
 	const in = `{"path":"repos/api","defaultBase":"main","setup":["a"],"env":{"K":"V"},"dev":"d"}`

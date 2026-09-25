@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Mykhol/becket/internal/config"
 	"github.com/Mykhol/becket/internal/git"
 	"github.com/Mykhol/becket/internal/render"
 	"github.com/Mykhol/becket/internal/workspace"
@@ -192,7 +193,19 @@ func runCreate(args []string) {
 	if runSetup {
 		fmt.Println()
 		runSetupForWorkspace(p, id)
+	} else if anyHasDeps(p, repos) {
+		render.Info("Dependencies not installed. Run 'becket deps' inside a repo before running its code.")
 	}
+}
+
+// anyHasDeps reports whether any of repos has a 'deps' block configured.
+func anyHasDeps(p *config.Platform, repos []string) bool {
+	for _, repo := range repos {
+		if p.Settings.Repos[repo].Deps != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchedBase resolves the start point for a new branch: origin/<base> after a

@@ -18,8 +18,24 @@ type RepoConfig struct {
 	Path        string            `json:"path"`
 	DefaultBase string            `json:"defaultBase"`
 	Setup       []string          `json:"setup,omitempty"`
+	Deps        *DepsConfig       `json:"deps,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Dev         string            `json:"dev,omitempty"`
+}
+
+// DepsConfig is a repo's canonical, idempotent dependency install, run by
+// 'becket deps' and (unforced) before a repo's setup commands.
+type DepsConfig struct {
+	// Run is the shell commands that install dependencies, run in the
+	// worktree with the repo's env.
+	Run []string `json:"run"`
+	// Lockfiles are paths, relative to the worktree, whose contents key the
+	// install: a changed lockfile invalidates the stamp.
+	Lockfiles []string `json:"lockfiles,omitempty"`
+	// Dirs are dependency directories, relative to the worktree, that 'becket
+	// gc' may prune once idle (path.Match-style globs allowed, e.g.
+	// "apps/*/node_modules").
+	Dirs []string `json:"dirs,omitempty"`
 }
 
 // Settings is the platform config. Struct field order is the on-disk key order
@@ -33,6 +49,22 @@ type Settings struct {
 	Files         []string              `json:"files,omitempty"`
 	Docker        string                `json:"docker,omitempty"`
 	Session       string                `json:"session,omitempty"`
+	GC            *GCConfig             `json:"gc,omitempty"`
+}
+
+// GCConfig tunes 'becket gc': which workspace ids are treated as throwaway,
+// and the idle thresholds for removal and dependency pruning. Nil fields fall
+// back to their defaults (see the gc command).
+type GCConfig struct {
+	// Disposable is a set of workspace-id globs (path.Match) treated as
+	// throwaway. Defaults to ["spike-*", "*review*"].
+	Disposable []string `json:"disposable,omitempty"`
+	// IdleDays is how many days idle before a disposable or no-work workspace
+	// is eligible for removal. Defaults to 3.
+	IdleDays *int `json:"idleDays,omitempty"`
+	// DepsIdleDays is how many days idle before a kept workspace's dependency
+	// directories are pruned. Defaults to 2.
+	DepsIdleDays *int `json:"depsIdleDays,omitempty"`
 }
 
 // Platform is a loaded config plus the derived paths the commands operate on.

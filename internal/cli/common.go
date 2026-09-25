@@ -122,3 +122,17 @@ func selectRepos(p *config.Platform, reposFlag string) []string {
 func isStdinTTY() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
+
+// pathContains reports whether target is dir itself or nested inside it.
+// Both are resolved to absolute paths first (neither needs to exist).
+func pathContains(dir, target string) bool {
+	dirAbs, err1 := filepath.Abs(dir)
+	targetAbs, err2 := filepath.Abs(target)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	if dirAbs == targetAbs {
+		return true
+	}
+	return strings.HasPrefix(targetAbs, dirAbs+string(filepath.Separator))
+}

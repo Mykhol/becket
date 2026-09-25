@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Mykhol/becket/internal/config"
 	"github.com/Mykhol/becket/internal/git"
 	"github.com/Mykhol/becket/internal/render"
 	"github.com/Mykhol/becket/internal/workspace"
@@ -52,12 +53,24 @@ func runTeardown(args []string) {
 	}
 
 	p := loadPlatform()
-	ws := wsPath(p, id)
 	m, err := workspace.Load(manifestPath(p, id))
 	if err != nil {
 		render.Die("Workspace '%s' not found.", id)
 	}
 
+	if err := teardownWorkspace(p, id, m, deleteBranches); err != nil {
+		render.Die("%v", err)
+	}
+	render.Info("Removed workspace: %s", id)
+}
+
+// teardownWorkspace is the shared core of 'becket teardown' and 'becket gc's
+// removal step: remove every repo's worktree (deleting its branch when
+// deleteBranches), then the workspace directory itself. Per-repo failures are
+// warned and skipped, matching runTeardown's original tolerance; only the
+// final directory removal is fatal to the caller.
+func teardownWorkspace(p *config.Platform, id string, m *workspace.Manifest, deleteBranches bool) error {
+	ws := wsPath(p, id)
 	for _, repo := range m.Order {
 		rc, ok := p.Settings.Repos[repo]
 		if !ok {
@@ -83,8 +96,5 @@ func runTeardown(args []string) {
 		_ = git.Quiet(repoAbs, "worktree", "prune")
 	}
 
-	if err := os.RemoveAll(ws); err != nil {
-		render.Die("%v", err)
-	}
-	render.Info("Removed workspace: %s", id)
+	return os.RemoveAll(ws)
 }

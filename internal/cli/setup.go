@@ -49,18 +49,23 @@ func runSetupForWorkspace(p *config.Platform, id string) {
 
 	for _, repo := range m.Order {
 		rc := p.Settings.Repos[repo]
-		if len(rc.Setup) == 0 {
-			render.Info("No setup commands for %s, skipping.", repo)
-			continue
-		}
 		wt := filepath.Join(ws, repo)
 		if fi, err := os.Stat(wt); err != nil || !fi.IsDir() {
 			render.Warn("Worktree missing for %s, skipping.", repo)
 			continue
 		}
-		render.Info("Setting up %s...", repo)
 
 		envPrefix := buildEnvPrefix(rc.Env)
+		if rc.Deps != nil {
+			_ = installRepoDeps(ws, repo, rc.Deps, wt, envPrefix, false)
+		}
+
+		if len(rc.Setup) == 0 {
+			render.Info("No setup commands for %s, skipping.", repo)
+			continue
+		}
+		render.Info("Setting up %s...", repo)
+
 		for _, cmd := range rc.Setup {
 			render.Info("  Running: %s", cmd)
 			if err := runShell(wt, envPrefix+cmd); err != nil {
