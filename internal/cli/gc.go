@@ -642,35 +642,57 @@ func treeHasFiles(dir string) bool {
 
 // seededCopyEdited reports whether a workspace copy of a platform file was
 // changed inside the workspace. The platform original keeps evolving after
-// seeding, so a difference only counts when the workspace side is the newer
-// one, or the file has no platform counterpart.
+// seeding, so a differing file only counts when the workspace side is newer.
+// A file with no platform counterpart counts only when it appeared after
+// seeding: seeding copies the whole tree at once, and files the platform later
+// deleted are stale copies, not work.
 func seededCopyEdited(platformPath, wsPath string) bool {
+	seededAt, ok := oldestFileTime(wsPath)
+	if !ok {
+		return false
+	}
+	addedAfterSeeding := seededAt.Add(10 * time.Minute)
 	edited := false
 	_ = filepath.WalkDir(wsPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		rel, _ := filepath.Rel(wsPath, path)
-		pf := filepath.Join(platformPath, rel)
-		if wsPath == path {
-			pf = platformPath
-		}
-		pInfo, perr := os.Stat(pf)
-		wInfo, werr := d.Info()
-		if perr != nil || werr != nil {
+		wInfo, err := d.Info()
+		if err != nil {
 			edited = true
 			return filepath.SkipAll
 		}
-		if filesEqual(pf, path) {
-			return nil
+		rel, _ := filepath.Rel(wsPath, path)
+		pf := filepath.Join(platformPath, rel)
+		pInfo, err := os.Stat(pf)
+		switch {
+		case err != nil:
+			edited = wInfo.ModTime().After(addedAfterSeeding)
+		case filesEqual(pf, path):
+		default:
+			edited = wInfo.ModTime().After(pInfo.ModTime())
 		}
-		if wInfo.ModTime().After(pInfo.ModTime()) {
-			edited = true
+		if edited {
 			return filepath.SkipAll
 		}
 		return nil
 	})
 	return edited
+}
+
+func oldestFileTime(root string) (time.Time, bool) {
+	var oldest time.Time
+	found := false
+	_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && (!found || info.ModTime().Before(oldest)) {
+			oldest, found = info.ModTime(), true
+		}
+		return nil
+	})
+	return oldest, found
 }
 
 func filesEqual(a, b string) bool {

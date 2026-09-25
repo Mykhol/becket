@@ -161,3 +161,33 @@ func TestArchiveWorkspaceFiles(t *testing.T) {
 		t.Fatal("empty docs/ should not be archived")
 	}
 }
+
+func TestSeededCopyEditedMissingCounterpart(t *testing.T) {
+	platform := t.TempDir()
+	ws := t.TempDir()
+	seeded := time.Now().Add(-48 * time.Hour)
+	write := func(path string, at time.Time) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(platform, "keep.md"), seeded)
+	write(filepath.Join(ws, "keep.md"), seeded)
+	write(filepath.Join(ws, "deleted-upstream.md"), seeded)
+
+	if seededCopyEdited(platform, ws) {
+		t.Fatal("a file the platform later deleted counted as a workspace edit")
+	}
+
+	write(filepath.Join(ws, "added-later.md"), seeded.Add(time.Hour))
+	if !seededCopyEdited(platform, ws) {
+		t.Fatal("a file added after seeding did not count as a workspace edit")
+	}
+}
