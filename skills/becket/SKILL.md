@@ -65,7 +65,9 @@ that `AGENTS.md` when you start work inside a workspace.
   empty (no-work), and idle disposable workspaces, and prune dependency
   directories from idle ones it keeps. Dry-run by default — pass `--apply` to
   act. Never removes the current workspace, a workspace with a stack child,
-  or one with uncommitted or unpushed work.
+  one with uncommitted or unpushed work, or one holding its own files at the
+  workspace root (reports, notes in `docs/`, edited seeded files). Commits
+  GitHub still holds (squash-merged or PR-head checkouts) count as pushed.
 
 **Sync / ship**
 - `becket sync [id]` — rebase every repo onto its base branch.

@@ -5,6 +5,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/Mykhol/becket/internal/config"
 )
 
 func TestMatchesAnyGlob(t *testing.T) {
@@ -77,5 +80,58 @@ func TestDedupeStrings(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("dedupeStrings = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestUnsavedWorkspaceFile(t *testing.T) {
+	platform := t.TempDir()
+	ws := t.TempDir()
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(platform, ".tasks", "plan.md"), "platform")
+	write(filepath.Join(ws, ".tasks", "plan.md"), "platform")
+	write(filepath.Join(ws, "AGENTS.md"), "generated")
+	write(filepath.Join(ws, "repo", "README.md"), "code")
+	if err := os.MkdirAll(filepath.Join(ws, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &config.Platform{Dir: platform, Settings: config.Settings{Files: []string{".tasks"}}}
+	repos := []gcRepoInfo{{name: "repo"}}
+
+	if got := unsavedWorkspaceFile(p, ws, repos); got != "" {
+		t.Fatalf("pristine workspace reported %q", got)
+	}
+
+	write(filepath.Join(ws, "docs", "notes.md"), "notes")
+	if got := unsavedWorkspaceFile(p, ws, repos); got != "docs" {
+		t.Fatalf("docs with a file: got %q, want docs", got)
+	}
+	_ = os.RemoveAll(filepath.Join(ws, "docs"))
+
+	write(filepath.Join(ws, ".reports", "plan.md"), "report")
+	if got := unsavedWorkspaceFile(p, ws, repos); got != ".reports" {
+		t.Fatalf("unknown root entry: got %q, want .reports", got)
+	}
+	_ = os.RemoveAll(filepath.Join(ws, ".reports"))
+
+	future := time.Now().Add(time.Hour)
+	write(filepath.Join(ws, ".tasks", "plan.md"), "edited in workspace")
+	_ = os.Chtimes(filepath.Join(ws, ".tasks", "plan.md"), future, future)
+	if got := unsavedWorkspaceFile(p, ws, repos); got != ".tasks" {
+		t.Fatalf("seeded file edited in workspace: got %q, want .tasks", got)
+	}
+
+	write(filepath.Join(platform, ".tasks", "plan.md"), "platform moved on")
+	_ = os.Chtimes(filepath.Join(platform, ".tasks", "plan.md"), future.Add(time.Hour), future.Add(time.Hour))
+	if got := unsavedWorkspaceFile(p, ws, repos); got != "" {
+		t.Fatalf("platform-side change reported as workspace edit: %q", got)
 	}
 }

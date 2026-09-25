@@ -26,8 +26,10 @@ func newGCCmd() *cobra.Command {
 		Short: "Remove merged/idle workspaces and prune stale dependency dirs",
 		Long: `Dry-run by default: prints what would happen and changes nothing.
 
-A workspace is removed when it is safe (no unpushed or uncommitted work, not
-the current directory, not another workspace's stack parent) and eligible
+A workspace is removed when it is safe (no uncommitted work, no commits
+missing from both remotes and GitHub, no files of its own at the workspace
+root, not the current directory, not another workspace's stack parent) and
+eligible
 (its branch is merged/closed on GitHub, it has no commits of its own past its
 base, or its id matches a disposable pattern and it has sat idle). A kept
 workspace that has sat idle past the dependency threshold has its configured
@@ -115,7 +117,7 @@ func runGC(args []string) {
 			idle = 0
 		}
 
-		verdict := decideGCRemoval(cwd, w.ws, stackParents[w.id], repos, idle, idleDays, w.id, disposable)
+		verdict := decideGCRemoval(p, cwd, w.ws, stackParents[w.id], repos, idle, idleDays, w.id, disposable)
 
 		removed := false
 		switch {
@@ -290,11 +292,14 @@ type gcVerdict struct {
 
 // decideGCRemoval applies the local safety rules first and only asks GitHub
 // about workspaces that pass them, since gh costs a network round trip per call.
-func decideGCRemoval(cwd, ws string, isStackParent bool, repos []gcRepoInfo, idle, idleDays int, id string, disposable []string) gcVerdict {
+func decideGCRemoval(p *config.Platform, cwd, ws string, isStackParent bool, repos []gcRepoInfo, idle, idleDays int, id string, disposable []string) gcVerdict {
 	localReason := localEligibility(repos, idle, idleDays, id, disposable)
 
 	if blocker := localSafetyBlocker(cwd, ws, isStackParent, repos); blocker != "" {
 		return gcVerdict{blocked: localReason != "", reason: blocker}
+	}
+	if extra := unsavedWorkspaceFile(p, ws, repos); extra != "" {
+		return gcVerdict{blocked: localReason != "", reason: "unsaved files: " + extra}
 	}
 
 	unsaved := reposWithUnsavedCommits(repos)
@@ -581,4 +586,85 @@ func printGCPlan(lines []gcLine) {
 		fmt.Printf("%s%s%s\n", render.PadRight(l.action, 8), render.PadRight(l.id, idW), l.reason)
 	}
 	fmt.Println()
+}
+
+// unsavedWorkspaceFile returns the first entry at the workspace root that
+// could hold work living outside git: anything that is not a worktree, not a
+// file becket writes, not an empty docs/ dir, and not a seeded platform file
+// left as seeded. Reports and notes written at the root would otherwise vanish.
+func unsavedWorkspaceFile(p *config.Platform, ws string, repos []gcRepoInfo) string {
+	managed := map[string]bool{"AGENTS.md": true, ".becket.json": true, "workspace.schema.json": true, ".becket": true}
+	for _, r := range repos {
+		managed[r.name] = true
+	}
+	seeded := map[string]bool{}
+	for _, f := range p.Settings.Files {
+		seeded[filepath.Clean(f)] = true
+	}
+	entries, err := os.ReadDir(ws)
+	if err != nil {
+		return "unreadable workspace"
+	}
+	for _, e := range entries {
+		name := e.Name()
+		switch {
+		case managed[name]:
+		case name == "docs" && !treeHasFiles(filepath.Join(ws, name)):
+		case seeded[name] && !seededCopyEdited(filepath.Join(p.Dir, name), filepath.Join(ws, name)):
+		default:
+			return name
+		}
+	}
+	return ""
+}
+
+func treeHasFiles(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
+// seededCopyEdited reports whether a workspace copy of a platform file was
+// changed inside the workspace. The platform original keeps evolving after
+// seeding, so a difference only counts when the workspace side is the newer
+// one, or the file has no platform counterpart.
+func seededCopyEdited(platformPath, wsPath string) bool {
+	edited := false
+	_ = filepath.WalkDir(wsPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(wsPath, path)
+		pf := filepath.Join(platformPath, rel)
+		if wsPath == path {
+			pf = platformPath
+		}
+		pInfo, perr := os.Stat(pf)
+		wInfo, werr := d.Info()
+		if perr != nil || werr != nil {
+			edited = true
+			return filepath.SkipAll
+		}
+		if filesEqual(pf, path) {
+			return nil
+		}
+		if wInfo.ModTime().After(pInfo.ModTime()) {
+			edited = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return edited
+}
+
+func filesEqual(a, b string) bool {
+	da, err1 := os.ReadFile(a)
+	db, err2 := os.ReadFile(b)
+	return err1 == nil && err2 == nil && string(da) == string(db)
 }

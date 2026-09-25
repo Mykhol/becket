@@ -147,6 +147,11 @@ idle before a disposable or no-work workspace is removed, default `3`), and
 `depsIdleDays` (days idle before a kept workspace's dependency directories are
 pruned, default `2`).
 
+`gc` never removes a workspace with uncommitted changes, with commits that
+neither a remote ref nor GitHub holds, or with files of its own at the
+workspace root (a `.reports/` dir, notes in `docs/`, a seeded file edited
+in place).
+
 ## Command reference
 
 | Command | Description |
