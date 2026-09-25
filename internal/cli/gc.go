@@ -29,9 +29,8 @@ func newGCCmd() *cobra.Command {
 A workspace is removed when it is safe (no uncommitted work, no commits
 missing from both remotes and GitHub, no unknown files at the workspace
 root, not the current directory, not another workspace's stack parent) and
-eligible
-(its PR is merged, or closed and idle, it has no commits of its own past its
-base, or its id matches a disposable pattern and it has sat idle). A kept
+eligible (its PR is merged, or closed and idle; it has no commits of its own
+past its base; or its id matches a disposable pattern and it has sat idle). A kept
 workspace that has sat idle past the dependency threshold has its configured
 dependency directories (node_modules, .venv, ...) deleted instead, so
 'becket deps' reinstalls them on next use.
