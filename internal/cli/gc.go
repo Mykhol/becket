@@ -135,7 +135,7 @@ func runGC(args []string) {
 			lines = append(lines, gcLine{"keep", w.id, verdict.reason})
 		}
 
-		if !removed {
+		if !removed && !verdict.remove {
 			targets := planDepsPrune(p, w.ws, w.m, idle, depsIdleDays)
 			if len(targets) > 0 {
 				var labels []string
@@ -289,9 +289,7 @@ type gcVerdict struct {
 }
 
 // decideGCRemoval applies the local safety rules first and only asks GitHub
-// about workspaces that pass them, since gh costs a network round trip per repo.
-// A merged PR stands in for "pushed": squash merges usually delete the remote
-// branch, which leaves the local commits reachable from no remote ref.
+// about workspaces that pass them, since gh costs a network round trip per call.
 func decideGCRemoval(cwd, ws string, isStackParent bool, repos []gcRepoInfo, idle, idleDays int, id string, disposable []string) gcVerdict {
 	localReason := localEligibility(repos, idle, idleDays, id, disposable)
 
@@ -299,19 +297,36 @@ func decideGCRemoval(cwd, ws string, isStackParent bool, repos []gcRepoInfo, idl
 		return gcVerdict{blocked: localReason != "", reason: blocker}
 	}
 
-	unpushed := unpushedRepos(repos)
-	if localReason != "" && len(unpushed) == 0 {
+	unsaved := reposWithUnsavedCommits(repos)
+	if localReason != "" && len(unsaved) == 0 {
 		return gcVerdict{remove: true, reason: localReason}
 	}
-
-	if prs, allClosed := lookupClosedPRs(repos); allClosed && coveredByPRs(repos, unpushed, prs) {
+	if len(unsaved) == 0 && allPRsClosed(repos) {
 		return gcVerdict{remove: true, reason: "merged"}
 	}
-
 	if localReason != "" {
-		return gcVerdict{blocked: true, reason: "unpushed: " + unpushed[0].name}
+		return gcVerdict{blocked: true, reason: "unpushed: " + unsaved[0].name}
 	}
 	return gcVerdict{}
+}
+
+// reposWithUnsavedCommits returns repos whose HEAD is reachable from no remote
+// ref and unknown to GitHub. Squash merges delete the remote branch and review
+// checkouts track PR heads under another name, so "not on a remote ref" alone
+// would keep most of them forever; GitHub still holding the HEAD commit means
+// every ancestor is recoverable.
+func reposWithUnsavedCommits(repos []gcRepoInfo) []gcRepoInfo {
+	var out []gcRepoInfo
+	for _, r := range repos {
+		if n, ok := revListCount(r.wt, "HEAD", "--not", "--remotes"); ok && n == 0 {
+			continue
+		}
+		if head, err := git.Output(r.wt, "rev-parse", "HEAD"); err == nil && ghHasCommit(r.wt, head) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 func localSafetyBlocker(cwd, ws string, isStackParent bool, repos []gcRepoInfo) string {
@@ -376,44 +391,6 @@ func localEligibility(repos []gcRepoInfo, idle, idleDays int, id string, disposa
 	return ""
 }
 
-type ghPR struct {
-	State      string `json:"state"`
-	HeadRefOid string `json:"headRefOid"`
-}
-
-// lookupClosedPRs returns each repo's most recent PR for its branch, and
-// whether at least one PR exists and every found PR is merged or closed.
-func lookupClosedPRs(repos []gcRepoInfo) (map[string]ghPR, bool) {
-	prs := map[string]ghPR{}
-	for _, r := range repos {
-		pr, ok := ghLatestPR(r.wt, r.entry.Branch)
-		if !ok {
-			continue
-		}
-		if pr.State != "MERGED" && pr.State != "CLOSED" {
-			return nil, false
-		}
-		prs[r.name] = pr
-	}
-	return prs, len(prs) > 0
-}
-
-// coveredByPRs reports whether every unpushed repo's HEAD is exactly the head
-// its closed PR recorded, so GitHub still holds those commits.
-func coveredByPRs(repos, unpushed []gcRepoInfo, prs map[string]ghPR) bool {
-	for _, r := range unpushed {
-		pr, ok := prs[r.name]
-		if !ok {
-			return false
-		}
-		head, err := git.Output(r.wt, "rev-parse", "HEAD")
-		if err != nil || head != pr.HeadRefOid {
-			return false
-		}
-	}
-	return true
-}
-
 func revListCount(wt string, args ...string) (int, bool) {
 	out, err := git.Output(wt, append([]string{"rev-list", "--count"}, args...)...)
 	if err != nil {
@@ -435,6 +412,27 @@ func matchesAnyGlob(id string, patterns []string) bool {
 	return false
 }
 
+type ghPR struct {
+	State string `json:"state"`
+}
+
+// allPRsClosed reports whether at least one repo has a PR for its branch and
+// every PR found is merged or closed.
+func allPRsClosed(repos []gcRepoInfo) bool {
+	found := false
+	for _, r := range repos {
+		pr, ok := ghLatestPR(r.wt, r.entry.Branch)
+		if !ok {
+			continue
+		}
+		if pr.State != "MERGED" && pr.State != "CLOSED" {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
 // ghLatestPR queries the most recent PR for branch in the repo at wt. ok is
 // false when gh isn't installed, the call fails (e.g. a non-GitHub remote), or
 // there is no PR — all "unknown", not an error.
@@ -445,7 +443,7 @@ func ghLatestPR(wt, branch string) (ghPR, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "list",
-		"--head", branch, "--state", "all", "--json", "state,headRefOid", "--limit", "1")
+		"--head", branch, "--state", "all", "--json", "state", "--limit", "1")
 	cmd.Dir = wt
 	out, err := cmd.Output()
 	if err != nil {
@@ -456,6 +454,20 @@ func ghLatestPR(wt, branch string) (ghPR, bool) {
 		return ghPR{}, false
 	}
 	return prs[0], true
+}
+
+// ghHasCommit reports whether the GitHub repo behind wt's origin holds sha,
+// including commits reachable only from pull request refs.
+func ghHasCommit(wt, sha string) bool {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", "repos/{owner}/{repo}/commits/"+sha, "--jq", ".sha")
+	cmd.Dir = wt
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == sha
 }
 
 // depsPruneTarget is one repo's dependency directories to delete for an idle
