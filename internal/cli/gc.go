@@ -30,7 +30,7 @@ A workspace is removed when it is safe (no uncommitted work, no commits
 missing from both remotes and GitHub, no unknown files at the workspace
 root, not the current directory, not another workspace's stack parent) and
 eligible
-(its branch is merged/closed on GitHub, it has no commits of its own past its
+(its PR is merged, or closed and idle, it has no commits of its own past its
 base, or its id matches a disposable pattern and it has sat idle). A kept
 workspace that has sat idle past the dependency threshold has its configured
 dependency directories (node_modules, .venv, ...) deleted instead, so
@@ -140,7 +140,7 @@ func runGC(args []string) {
 			lines = append(lines, gcLine{"keep", w.id, verdict.reason})
 		}
 
-		if !removed && !verdict.remove {
+		if !removed && !verdict.remove && !anyRepoDirty(repos) {
 			targets := planDepsPrune(p, w.ws, w.m, idle, depsIdleDays)
 			if len(targets) > 0 {
 				var labels []string
@@ -309,7 +309,7 @@ func decideGCRemoval(p *config.Platform, cwd, ws string, isStackParent bool, rep
 	if localReason != "" && len(unsaved) == 0 {
 		return gcVerdict{remove: true, reason: localReason}
 	}
-	if len(unsaved) == 0 && allPRsClosed(repos) {
+	if len(unsaved) == 0 && allPRsFinished(repos, idle >= idleDays) {
 		return gcVerdict{remove: true, reason: "merged"}
 	}
 	if localReason != "" {
@@ -337,6 +337,21 @@ func reposWithUnsavedCommits(repos []gcRepoInfo) []gcRepoInfo {
 	return out
 }
 
+// anyRepoDirty reports uncommitted changes in any worktree. Idle detection
+// cannot see unstaged edits, so a dirty tree may still be in use and keeps its
+// dependency folders.
+func anyRepoDirty(repos []gcRepoInfo) bool {
+	for _, r := range repos {
+		if !r.exists {
+			continue
+		}
+		if out, err := git.Output(r.wt, "status", "--porcelain"); err != nil || out != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func localSafetyBlocker(cwd, ws string, isStackParent bool, repos []gcRepoInfo) string {
 	if cwd != "" && pathContains(ws, cwd) {
 		return "in use (cwd)"
@@ -356,16 +371,6 @@ func localSafetyBlocker(cwd, ws string, isStackParent bool, repos []gcRepoInfo) 
 		}
 	}
 	return ""
-}
-
-func unpushedRepos(repos []gcRepoInfo) []gcRepoInfo {
-	var out []gcRepoInfo
-	for _, r := range repos {
-		if n, ok := revListCount(r.wt, "HEAD", "--not", "--remotes"); !ok || n != 0 {
-			out = append(out, r)
-		}
-	}
-	return out
 }
 
 // localEligibility returns why a workspace qualifies for removal without
@@ -424,16 +429,17 @@ type ghPR struct {
 	State string `json:"state"`
 }
 
-// allPRsClosed reports whether at least one repo has a PR for its branch and
-// every PR found is merged or closed.
-func allPRsClosed(repos []gcRepoInfo) bool {
+// allPRsFinished reports whether at least one repo has a PR for its branch and
+// every PR found is merged, or closed unmerged once the workspace is idle — a
+// closed PR may be reopened, a merged one is done.
+func allPRsFinished(repos []gcRepoInfo, idle bool) bool {
 	found := false
 	for _, r := range repos {
 		pr, ok := ghLatestPR(r.wt, r.entry.Branch)
 		if !ok {
 			continue
 		}
-		if pr.State != "MERGED" && pr.State != "CLOSED" {
+		if pr.State != "MERGED" && !(pr.State == "CLOSED" && idle) {
 			return false
 		}
 		found = true

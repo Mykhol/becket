@@ -124,10 +124,11 @@ func isStdinTTY() bool {
 }
 
 // pathContains reports whether target is dir itself or nested inside it.
-// Both are resolved to absolute paths first (neither needs to exist).
+// Both are resolved to absolute, symlink-free paths where they exist, so a
+// shell sitting in a workspace through a symlinked path still matches.
 func pathContains(dir, target string) bool {
-	dirAbs, err1 := filepath.Abs(dir)
-	targetAbs, err2 := filepath.Abs(target)
+	dirAbs, err1 := resolvedAbs(dir)
+	targetAbs, err2 := resolvedAbs(target)
 	if err1 != nil || err2 != nil {
 		return false
 	}
@@ -135,4 +136,15 @@ func pathContains(dir, target string) bool {
 		return true
 	}
 	return strings.HasPrefix(targetAbs, dirAbs+string(filepath.Separator))
+}
+
+func resolvedAbs(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real, nil
+	}
+	return abs, nil
 }
