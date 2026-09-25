@@ -110,6 +110,11 @@
         "depsIdleDays": {
           "type": "integer",
           "description": "Days idle before a kept workspace's dependency directories are pruned. Defaults to 2."
+        },
+        "archive": {
+          "type": "array",
+          "description": "Workspace-root entries copied to <platform>/.becket/archive/<id>/ before gc removes a workspace. Defaults to [\".reports\", \"docs\"].",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false

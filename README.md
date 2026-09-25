@@ -148,9 +148,10 @@ idle before a disposable or no-work workspace is removed, default `3`), and
 pruned, default `2`).
 
 `gc` never removes a workspace with uncommitted changes, with commits that
-neither a remote ref nor GitHub holds, or with files of its own at the
-workspace root (a `.reports/` dir, notes in `docs/`, a seeded file edited
-in place).
+neither a remote ref nor GitHub holds, or with unknown files at the
+workspace root (including a seeded file edited in place). Entries listed in
+`gc.archive` (default `.reports` and `docs`) are copied to
+`<platform>/.becket/archive/<id>/` before a workspace is removed.
 
 ## Command reference
 

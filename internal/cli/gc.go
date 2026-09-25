@@ -27,7 +27,7 @@ func newGCCmd() *cobra.Command {
 		Long: `Dry-run by default: prints what would happen and changes nothing.
 
 A workspace is removed when it is safe (no uncommitted work, no commits
-missing from both remotes and GitHub, no files of its own at the workspace
+missing from both remotes and GitHub, no unknown files at the workspace
 root, not the current directory, not another workspace's stack parent) and
 eligible
 (its branch is merged/closed on GitHub, it has no commits of its own past its
@@ -125,7 +125,10 @@ func runGC(args []string) {
 			lines = append(lines, gcLine{"remove", w.id, verdict.reason})
 			toRemove++
 			if apply {
-				if err := teardownWorkspace(p, w.id, w.m, true); err != nil {
+				if err := archiveWorkspaceFiles(p, w.ws, w.id); err != nil {
+					render.Warn("Could not archive %s, keeping it: %v", w.id, err)
+					failed = true
+				} else if err := teardownWorkspace(p, w.id, w.m, true); err != nil {
 					render.Warn("Could not remove workspace %s: %v", w.id, err)
 					failed = true
 				} else {
@@ -590,10 +593,13 @@ func printGCPlan(lines []gcLine) {
 
 // unsavedWorkspaceFile returns the first entry at the workspace root that
 // could hold work living outside git: anything that is not a worktree, not a
-// file becket writes, not an empty docs/ dir, and not a seeded platform file
-// left as seeded. Reports and notes written at the root would otherwise vanish.
+// file becket writes, not an archived entry, and not a seeded platform file
+// left as seeded. Such files would otherwise vanish with the workspace.
 func unsavedWorkspaceFile(p *config.Platform, ws string, repos []gcRepoInfo) string {
 	managed := map[string]bool{"AGENTS.md": true, ".becket.json": true, "workspace.schema.json": true, ".becket": true}
+	for _, name := range gcArchiveEntries(p.Settings.GC) {
+		managed[filepath.Clean(name)] = true
+	}
 	for _, r := range repos {
 		managed[r.name] = true
 	}
@@ -609,7 +615,6 @@ func unsavedWorkspaceFile(p *config.Platform, ws string, repos []gcRepoInfo) str
 		name := e.Name()
 		switch {
 		case managed[name]:
-		case name == "docs" && !treeHasFiles(filepath.Join(ws, name)):
 		case seeded[name] && !seededCopyEdited(filepath.Join(p.Dir, name), filepath.Join(ws, name)):
 		default:
 			return name
@@ -667,4 +672,35 @@ func filesEqual(a, b string) bool {
 	da, err1 := os.ReadFile(a)
 	db, err2 := os.ReadFile(b)
 	return err1 == nil && err2 == nil && string(da) == string(db)
+}
+
+func gcArchiveEntries(s *config.GCConfig) []string {
+	if s != nil && len(s.Archive) > 0 {
+		return s.Archive
+	}
+	return []string{".reports", "docs"}
+}
+
+func gcArchiveDir(p *config.Platform, id string) string {
+	return filepath.Join(p.Dir, ".becket", "archive", id)
+}
+
+// archiveWorkspaceFiles copies the configured root entries that hold files to
+// the platform archive, so gc can remove the workspace without losing them.
+func archiveWorkspaceFiles(p *config.Platform, ws, id string) error {
+	for _, name := range gcArchiveEntries(p.Settings.GC) {
+		src := filepath.Join(ws, name)
+		fi, err := os.Stat(src)
+		if err != nil || (fi.IsDir() && !treeHasFiles(src)) {
+			continue
+		}
+		dst := filepath.Join(gcArchiveDir(p, id), name)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := copyPath(src, dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }

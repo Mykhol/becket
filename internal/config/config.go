@@ -65,6 +65,10 @@ type GCConfig struct {
 	// DepsIdleDays is how many days idle before a kept workspace's dependency
 	// directories are pruned. Defaults to 2.
 	DepsIdleDays *int `json:"depsIdleDays,omitempty"`
+	// Archive lists workspace-root entries copied to
+	// <platform>/.becket/archive/<id>/ before gc removes a workspace, so
+	// reports and notes outlive it. Defaults to [".reports", "docs"].
+	Archive []string `json:"archive,omitempty"`
 }
 
 // Platform is a loaded config plus the derived paths the commands operate on.

@@ -111,16 +111,16 @@ func TestUnsavedWorkspaceFile(t *testing.T) {
 	}
 
 	write(filepath.Join(ws, "docs", "notes.md"), "notes")
-	if got := unsavedWorkspaceFile(p, ws, repos); got != "docs" {
-		t.Fatalf("docs with a file: got %q, want docs", got)
-	}
-	_ = os.RemoveAll(filepath.Join(ws, "docs"))
-
 	write(filepath.Join(ws, ".reports", "plan.md"), "report")
-	if got := unsavedWorkspaceFile(p, ws, repos); got != ".reports" {
-		t.Fatalf("unknown root entry: got %q, want .reports", got)
+	if got := unsavedWorkspaceFile(p, ws, repos); got != "" {
+		t.Fatalf("archived entries reported as unsaved: %q", got)
 	}
-	_ = os.RemoveAll(filepath.Join(ws, ".reports"))
+
+	write(filepath.Join(ws, "review-notes.md"), "loose file")
+	if got := unsavedWorkspaceFile(p, ws, repos); got != "review-notes.md" {
+		t.Fatalf("unknown root entry: got %q, want review-notes.md", got)
+	}
+	_ = os.Remove(filepath.Join(ws, "review-notes.md"))
 
 	future := time.Now().Add(time.Hour)
 	write(filepath.Join(ws, ".tasks", "plan.md"), "edited in workspace")
@@ -133,5 +133,31 @@ func TestUnsavedWorkspaceFile(t *testing.T) {
 	_ = os.Chtimes(filepath.Join(platform, ".tasks", "plan.md"), future.Add(time.Hour), future.Add(time.Hour))
 	if got := unsavedWorkspaceFile(p, ws, repos); got != "" {
 		t.Fatalf("platform-side change reported as workspace edit: %q", got)
+	}
+}
+
+func TestArchiveWorkspaceFiles(t *testing.T) {
+	platform := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".reports", "plan.md"), []byte("report"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(ws, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &config.Platform{Dir: platform}
+	if err := archiveWorkspaceFiles(p, ws, "spike-x"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(platform, ".becket", "archive", "spike-x", ".reports", "plan.md"))
+	if err != nil || string(got) != "report" {
+		t.Fatalf("report not archived: %q, %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(platform, ".becket", "archive", "spike-x", "docs")); err == nil {
+		t.Fatal("empty docs/ should not be archived")
 	}
 }
